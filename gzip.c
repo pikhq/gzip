@@ -28,7 +28,6 @@ static const struct option options[] = {
 	{"help",	no_argument,		NULL, 'h'},
 	{"keep",	no_argument,		NULL, 'k'},
 	{"list",	no_argument,		NULL, 'l'},
-	{"license",	no_argument,		NULL, 'L'},
 	{"no-name",	no_argument,		NULL, 'n'},
 	{"name",	no_argument,		NULL, 'N'},
 	{"quiet",	no_argument,		NULL, 'q'},
@@ -41,7 +40,7 @@ static const struct option options[] = {
 	{"best",	no_argument,		NULL, '9'},
 	{0}
 };
-static const char option_str[] = "acdfhklLnNqrS:tvV123456789";
+static const char option_str[] = "acdfhklnNqrS:tvV123456789";
 
 static bool  opt_ascii_text	= false;
 static bool  opt_stdout		= false;
@@ -72,7 +71,6 @@ static void write_help()
 			"compress links\n"
 		"  -h, --help           output this message\n"
 		"  -l, --list           list compressed file contents\n"
-		"  -L, --license        display software license\n"
 		"  -n, --no-name        do not save or restore the original "
 			"file name and time stamp\n"
 		"  -N, --name           save or restore the original file "
@@ -102,50 +100,6 @@ static void write_version()
 		"gzip 0.0\n"
 		"Copyright (c) 2014, Josiah Worcester.\n";
 	printf("%s", version_msg);
-}
-
-static void write_license()
-{
-	static const char license_msg[] =
-		"Copyright (c) 2014, Josiah Worcester\n"
-		"All rights reserved.\n"
-		"\n"
-		"Redistribution and use in source and binary forms, with or "
-			"without\n"
-		"modification, are permitted provided that the following "
-			"conditions are met:\n"
-		"\n"
-		"1. Redistributions of source code must retain the above "
-			"copyright notice, this\n"
-		"   list of conditions and the following disclaimer.\n"
-		"\n"
-		"2. Redistributions in binary form must reproduce the above "
-			"copyright notice,\n"
-		"   this list of conditions and the following disclaimer in "
-			"the documentation\n"
-		"   and/or other materials provided with the distribution.\n"
-		"\n"
-		"THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND "
-			"CONTRIBUTORS \"AS IS\" AND\n"
-		"ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT "
-			"LIMITED TO, THE IMPLIED\n"
-		"WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR "
-			"PURPOSE ARE\n"
-		"DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR "
-			"CONTRIBUTORS BE LIABLE FOR\n"
-		"ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR "
-			"CONSEQUENTIAL DAMAGES\n"
-		"(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE "
-			"GOODS OR SERVICES;\n"
-		"LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) "
-			"HOWEVER CAUSED AND ON\n"
-		"ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT "
-			"LIABILITY, OR TORT\n"
-		"(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT "
-			"OF THE USE OF THIS\n"
-		"SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH "
-			"DAMAGE.\n";
-	printf("%s", license_msg);
 }
 
 static int init_stream(struct z_stream_s *strm)
@@ -455,9 +409,6 @@ int main(int argc, char **argv)
 		case 'l':
 			opt_list = true;
 			break;
-		case 'L':
-			write_license();
-			return 0;
 		case 'n':
 			opt_restore_name = opt_store_name = false;
 			break;
