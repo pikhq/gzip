@@ -116,6 +116,7 @@ static int init_stream(struct z_stream_s *strm)
 			return 1;
 		}
 	}
+	return 0;
 }
 
 static int do_write(int fd, const void *buf, size_t count)
@@ -129,7 +130,7 @@ static int do_write(int fd, const void *buf, size_t count)
 	return 0;
 }
 
-static int close_stream(struct z_stream_s *strm)
+static void close_stream(struct z_stream_s *strm)
 {
 	if(opt_compress) {
 		deflateEnd(strm);
@@ -256,7 +257,8 @@ static int handle_stdin()
 	struct z_stream_s strm = {0};
 	char *out_path = NULL;
 
-	init_stream(&strm);
+	if(init_stream(&strm))
+		return 1;
 	if(opt_restore_name && !opt_compress && !opt_stdout) {
 		int res = read_header(&strm, 0);
 		if(res != 0) {
@@ -311,7 +313,8 @@ static int handle_path(char *path)
 		}
 	}
 
-	init_stream(&strm);
+	if(init_stream(&strm))
+		goto cleanup_fd;
 
 	if(opt_stdout) {
 		return out_to_stdout(&strm, path, in_fd);
