@@ -62,27 +62,34 @@ static void write_help()
 {
 	static const char help_msg[] =
 		"Usage: gzip [OPTION]... [FILE]...\n"
-		"Compress or uncompress FILEs (by default, compressing in-place)\n"
+		"Compress or uncompress FILEs (by default, compressing "
+			"in-place)\n"
 		"\n"
-		"  -c, --stdout         write on standard out, keeping original files unchanged\n"
+		"  -c, --stdout         write on standard out, keeping "
+			"original files unchanged\n"
 		"  -d, --decompress     decompress files\n"
-		"  -f, --force          force overwriting output files; compress links\n"
+		"  -f, --force          force overwriting output files; "
+			"compress links\n"
 		"  -h, --help           output this message\n"
 		"  -l, --list           list compressed file contents\n"
 		"  -L, --license        display software license\n"
-		"  -n, --no-name        do not save or restore the original file name and time stamp\n"
-		"  -N, --name           save or restore the original file name and time stamp (default)\n"
+		"  -n, --no-name        do not save or restore the original "
+			"file name and time stamp\n"
+		"  -N, --name           save or restore the original file "
+			"name and time stamp (default)\n"
 		"  -q, --quiet          suppress all warnings\n"
 		"  -r, --recursive      operate recursively on directories\n"
 		"  --rsyncable          generate rsync-friendly output\n"
 		"  -S, --sufix=SUF      use suffix SUF on compressed files\n"
-		"  -t, --test           test the integrity of compressed files\n"
+		"  -t, --test           test the integrity of compressed "
+			"files\n"
 		"  -v, --verbose        give verbose output\n"
 		"  -V, --version        output version number\n"
 		"  -1, --fast           compress fast\n"
 		"  -9, --best           compress better\n"
 		"\n"
-		"With no FILE, or when FILE is -, operates on standard input.\n"
+		"With no FILE, or when FILE is -, operates on standard "
+			"input.\n"
 		"\n"
 		"Report bugs to <josiahw@gmail.com>\n";
 	printf("%s", help_msg);
@@ -103,26 +110,41 @@ static void write_license()
 		"Copyright (c) 2014, Josiah Worcester\n"
 		"All rights reserved.\n"
 		"\n"
-		"Redistribution and use in source and binary forms, with or without\n"
-		"modification, are permitted provided that the following conditions are met:\n"
+		"Redistribution and use in source and binary forms, with or "
+			"without\n"
+		"modification, are permitted provided that the following "
+			"conditions are met:\n"
 		"\n"
-		"1. Redistributions of source code must retain the above copyright notice, this\n"
+		"1. Redistributions of source code must retain the above "
+			"copyright notice, this\n"
 		"   list of conditions and the following disclaimer.\n"
 		"\n"
-		"2. Redistributions in binary form must reproduce the above copyright notice,\n"
-		"   this list of conditions and the following disclaimer in the documentation\n"
+		"2. Redistributions in binary form must reproduce the above "
+			"copyright notice,\n"
+		"   this list of conditions and the following disclaimer in "
+			"the documentation\n"
 		"   and/or other materials provided with the distribution.\n"
 		"\n"
-		"THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\" AND\n"
-		"ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED\n"
-		"WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\n"
-		"DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR\n"
-		"ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES\n"
-		"(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;\n"
-		"LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON\n"
-		"ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT\n"
-		"(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\n"
-		"SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n";
+		"THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND "
+			"CONTRIBUTORS \"AS IS\" AND\n"
+		"ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT "
+			"LIMITED TO, THE IMPLIED\n"
+		"WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR "
+			"PURPOSE ARE\n"
+		"DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR "
+			"CONTRIBUTORS BE LIABLE FOR\n"
+		"ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR "
+			"CONSEQUENTIAL DAMAGES\n"
+		"(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE "
+			"GOODS OR SERVICES;\n"
+		"LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) "
+			"HOWEVER CAUSED AND ON\n"
+		"ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT "
+			"LIABILITY, OR TORT\n"
+		"(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT "
+			"OF THE USE OF THIS\n"
+		"SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH "
+			"DAMAGE.\n";
 	printf("%s", license_msg);
 }
 
@@ -178,7 +200,8 @@ static int read_header(struct z_stream_s *strm, int in_fd)
 	return 1;
 }
 
-static int out_to_fd(struct z_stream_s *strm, char *in_file, int in_fd, char *out_file, int out_fd)
+static int out_to_fd(struct z_stream_s *strm, char *in_file, int in_fd,
+                     char *out_file, int out_fd)
 {
 	int ret = 0;
 	char in[4096];
@@ -203,7 +226,8 @@ static int out_to_fd(struct z_stream_s *strm, char *in_file, int in_fd, char *ou
 				strm->avail_out = sizeof out;
 				strm->next_out = out;
 				deflate(strm, flush);
-				if(do_write(out_fd, out, sizeof(out) - strm->avail_out) != 0)
+				if(do_write(out_fd, out,
+				            sizeof out - strm->avail_out) != 0)
 					goto cleanup;
 			} while(strm->avail_out == 0);
 		} while(flush != Z_FINISH);
@@ -232,12 +256,14 @@ static int out_to_fd(struct z_stream_s *strm, char *in_file, int in_fd, char *ou
 				err = inflate(strm, Z_NO_FLUSH);
 				if(err != Z_OK && err != Z_STREAM_END) {
 					if(opt_verbosity >= 1)
-						fprintf(stderr, "%s: %s: bad input.\n",
+						fprintf(stderr, "%s: %s: bad "
+								"input.\n",
 							program_name, in_file);
 					ret = 1;
 					goto cleanup;
 				}
-				if(do_write(out_fd, out, sizeof(out) - strm->avail_out) != 0)
+				if(do_write(out_fd, out,
+				            sizeof out - strm->avail_out) != 0)
 					goto cleanup;
 			} while(strm->avail_out == 0);
 		} while(err != Z_STREAM_END);
@@ -255,7 +281,8 @@ static int out_to_stdout(struct z_stream_s *strm, char *in_file, int in_fd)
 	return out_to_fd(strm, in_file, in_fd, "stdout", 1);
 }
 
-static int out_to_filename(struct z_stream_s *strm, char *in_file, int in_fd, char *filename)
+static int out_to_filename(struct z_stream_s *strm, char *in_file, int in_fd,
+                           char *filename)
 {
 	int out_fd;
 
@@ -322,7 +349,8 @@ static int handle_path(char *path)
 			return ret;
 		} else {
 			if(opt_verbosity >= 1)
-				fprintf(stderr, "%s: %s is a directory -- ignored.\n",
+				fprintf(stderr, "%s: %s is a directory -- "
+						"ignored.\n",
 					program_name, path);
 			ret = 2;
 			goto cleanup_fd;
@@ -347,8 +375,10 @@ static int handle_path(char *path)
 			if(header.name)
 				out_path = header.name;
 		} else {
-			if(snprintf(out_path_buf, PATH_MAX, "%s", path) >= PATH_MAX) {
-				fprintf(stderr, "%s: input path %s too long -- ignoring.\n",
+			if(snprintf(out_path_buf, PATH_MAX, "%s", path)
+			    >= PATH_MAX) {
+				fprintf(stderr, "%s: input path %s too long "
+						"-- ignoring.\n",
 					program_name, path);
 				ret = 2;
 				goto cleanup_strm;
@@ -360,20 +390,24 @@ static int handle_path(char *path)
 		char *dir_path;
 		int len;
 		if(snprintf(dir_path_buf, PATH_MAX, "%s", path) >= PATH_MAX) {
-			fprintf(stderr, "%s: input path %s too long -- ignoring.\n",
+			fprintf(stderr, "%s: input path %s too long -- "
+					"ignoring.\n",
 				program_name, path);
 			ret = 2;
 			goto cleanup_strm;
 		}
 		dir_path = dirname(dir_path_buf);
 		if(strcmp(dir_path, ".") == 0) {
-			len = snprintf(out_path_buf, PATH_MAX, "%s%s", path, opt_suffix);
+			len = snprintf(out_path_buf, PATH_MAX, "%s%s", path,
+			               opt_suffix);
 		} else {
-			len = snprintf(out_path_buf, PATH_MAX, "%s/%s%s", dir_path, path, opt_suffix);
+			len = snprintf(out_path_buf, PATH_MAX, "%s/%s%s",
+			               dir_path, path, opt_suffix);
 		}
 		if(len >= PATH_MAX) {
 			if(opt_verbosity >= 1)
-				fprintf(stderr, "%s: output path %s too long -- ignoring %s.\n",
+				fprintf(stderr, "%s: output path %s too long "
+						"-- ignoring %s.\n",
 					program_name, out_path, path);
 			ret = 2;
 			goto cleanup_strm;
