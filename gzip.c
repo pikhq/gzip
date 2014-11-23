@@ -315,7 +315,7 @@ static int handle_path(char *path)
 		goto cleanup_fd;
 	}
 
-	if((stat_buf.st_mode & S_IFMT) == S_IFDIR) {
+	if(S_ISDIR(stat_buf.st_mode)) {
 		if(opt_recursive) {
 			ret = handle_dir(path, in_fd);
 			goto cleanup_fd;
