@@ -102,7 +102,7 @@ static void write_version()
 	printf("%s", version_msg);
 }
 
-static int init_stream(struct z_stream_s *strm)
+static int init_stream(z_stream *strm)
 {
 	if(opt_compress) {
 		if(deflateInit2(strm, opt_level, Z_DEFLATED, 31, 8,
@@ -130,7 +130,7 @@ static int do_write(int fd, const void *buf, size_t count)
 	return 0;
 }
 
-static void close_stream(struct z_stream_s *strm)
+static void close_stream(z_stream *strm)
 {
 	if(opt_compress) {
 		deflateEnd(strm);
@@ -150,12 +150,12 @@ static int remove_suffix(char *str, char *suffix)
 	return 1;
 }
 
-static int read_header(struct z_stream_s *strm, int in_fd)
+static int read_header(z_stream *strm, int in_fd)
 {
 	return 1;
 }
 
-static int out_to_fd(struct z_stream_s *strm, char *in_file, int in_fd,
+static int out_to_fd(z_stream *strm, char *in_file, int in_fd,
                      char *out_file, int out_fd)
 {
 	int ret = 0;
@@ -231,12 +231,12 @@ cleanup:
 	return ret;
 }
 
-static int out_to_stdout(struct z_stream_s *strm, char *in_file, int in_fd)
+static int out_to_stdout(z_stream *strm, char *in_file, int in_fd)
 {
 	return out_to_fd(strm, in_file, in_fd, "stdout", 1);
 }
 
-static int out_to_filename(struct z_stream_s *strm, char *in_file, int in_fd,
+static int out_to_filename(z_stream *strm, char *in_file, int in_fd,
                            char *filename)
 {
 	int out_fd;
@@ -254,7 +254,7 @@ static int out_to_filename(struct z_stream_s *strm, char *in_file, int in_fd,
 
 static int handle_stdin()
 {
-	struct z_stream_s strm = {0};
+	z_stream strm = {0};
 	char *out_path = NULL;
 
 	if(init_stream(&strm))
@@ -265,7 +265,7 @@ static int handle_stdin()
 			close_stream(&strm);
 			return res;
 		}
-		struct gz_header_s header;
+		gz_header header;
 		inflateGetHeader(&strm, &header);
 		if(header.name)
 			return out_to_filename(&strm, "stdin", 0, header.name);
@@ -282,7 +282,7 @@ static int handle_path(char *path)
 {
 	int in_fd;
 	struct stat stat_buf;
-	struct z_stream_s strm = {0};
+	z_stream strm = {0};
 	char out_path_buf[PATH_MAX] = {0};
 	char *out_path = out_path_buf;
 	int ret = 0;
@@ -327,7 +327,7 @@ static int handle_path(char *path)
 				ret = res;
 				goto cleanup_strm;
 			}
-			struct gz_header_s header;
+			gz_header header;
 			inflateGetHeader(&strm, &header);
 			if(header.name)
 				out_path = header.name;
