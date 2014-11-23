@@ -71,7 +71,7 @@ static int asprintf(char **s, const char *fmt, ...)
 	return vsnprintf(*s, l+1U, fmt, ap);
 }
 
-static void report_error(const char *msg, const char *fmt, ...)
+static void report_error(int err, const char *fmt, ...)
 {
 	va_list ap;
 	if(opt_verbosity < 1) return;
@@ -81,9 +81,10 @@ static void report_error(const char *msg, const char *fmt, ...)
 		vfprintf(stderr, fmt, ap);
 		va_end(ap);
 	}
-	if(msg) {
-		perror(msg);
+	if(err) {
+		fprintf(stderr, "%s%s", fmt ? ": " : "", strerror(err));
 	}
+	fprintf(stderr, "\n");
 }
 
 static void write_help()
@@ -136,12 +137,12 @@ static int init_stream(z_stream *strm)
 	if(opt_compress) {
 		if(deflateInit2(strm, opt_level, Z_DEFLATED, 31, 8,
 				Z_DEFAULT_STRATEGY) != Z_OK) {
-			report_error(0, "%s\n", strm->msg);
+			report_error(0, "%s", strm->msg);
 			return 1;
 		}
 	} else {
 		if(inflateInit2(strm, 31) != Z_OK) {
-			report_error(0, "%s\n", strm->msg);
+			report_error(0, "%s", strm->msg);
 			return 1;
 		}
 	}
@@ -153,7 +154,7 @@ static int do_write(int fd, const void *buf, size_t count)
 	while(count) {
 		ssize_t n = write(fd, buf, count);
 		if(n < 0 && errno == EINTR) continue;
-		if(n < 0) { report_error(0, 0); return 1; }
+		if(n < 0) { report_error(errno, 0); return 1; }
 		buf += n; count -= n;
 	}
 	return 0;
@@ -198,7 +199,7 @@ static int out_to_fd(z_stream *strm, char *in_file, int in_fd,
 		do {
 			read_amt = read(in_fd, in, sizeof in);
 			if(read_amt < 0) {
-				report_error(in_file, 0);
+				report_error(errno, "%s", in_file);
 				return 1;
 			}
 			if(read_amt == 0)
@@ -220,11 +221,11 @@ static int out_to_fd(z_stream *strm, char *in_file, int in_fd,
 		do {
 			read_amt = read(in_fd, in, sizeof in);
 			if(read_amt < 0) {
-				report_error(in_file, 0);
+				report_error(0, "%s", in_file);
 				return 1;
 			}
 			if(read_amt == 0) {
-				report_error(0, "%s: bad input.\n", in_file);
+				report_error(0, "%s: bad input", in_file);
 				return 1;
 			}
 			strm->next_in = in;
@@ -234,7 +235,7 @@ static int out_to_fd(z_stream *strm, char *in_file, int in_fd,
 				strm->next_out = out;
 				err = inflate(strm, Z_NO_FLUSH);
 				if(err != Z_OK && err != Z_STREAM_END) {
-					report_error(0, "%s: bad input.\n",
+					report_error(0, "%s: bad input",
 					             in_file);
 					return 1;
 				}
@@ -305,12 +306,12 @@ static int handle_path(char *path)
 	int ret = 0;
 
 	if((in_fd = open(path, O_RDONLY)) < 0) {
-		report_error(path, 0);
+		report_error(errno, "%s", path);
 		return 1;
 	}
 
 	if(fstat(in_fd, &stat_buf) == -1) {
-		report_error(path, 0);
+		report_error(errno, "%s", path);
 		ret = 1;
 		goto cleanup_fd;
 	}
@@ -320,7 +321,7 @@ static int handle_path(char *path)
 			ret = handle_dir(path, in_fd);
 			goto cleanup_fd;
 		} else {
-			report_error(0, "%s: is a directory\n", path);
+			report_error(0, "%s: is a directory", path);
 			ret = 2;
 			goto cleanup_fd;
 		}
@@ -351,7 +352,7 @@ static int handle_path(char *path)
 				remove_suffix(out_path, opt_suffix);
 		}
 		if(!out_path) {
-			report_error(0, 0);
+			report_error(errno, 0);
 			ret = 2;
 			goto cleanup_strm;
 		}
@@ -359,7 +360,7 @@ static int handle_path(char *path)
 		int len;
 		len = asprintf(&out_path, "%s%s", path, opt_suffix);
 		if(len < 0) {
-			report_error(0, 0);
+			report_error(errno, 0);
 			ret = 2;
 			goto cleanup_strm;
 		}
