@@ -107,7 +107,7 @@ static void write_help()
 		"  -q, --quiet          suppress all warnings\n"
 		"  -r, --recursive      operate recursively on directories\n"
 		"  --rsyncable          generate rsync-friendly output\n"
-		"  -S, --sufix=SUF      use suffix SUF on compressed files\n"
+		"  -S, --suffix=SUF     use suffix SUF on compressed files\n"
 		"  -t, --test           test the integrity of compressed "
 			"files\n"
 		"  -v, --verbose        give verbose output\n"
