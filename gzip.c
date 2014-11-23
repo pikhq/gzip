@@ -13,6 +13,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <stdlib.h>
+#include <stdarg.h>
 
 #include <zlib.h>
 
@@ -56,6 +58,18 @@ static bool  opt_rsyncable	= false;
 static char *opt_suffix		= ".gz";
 static bool  opt_test		= false;
 static int   opt_level		= 6;
+
+static int asprintf(char **s, const char *fmt, ...)
+{
+	int l;
+	va_list ap, ap2;
+	va_start(ap, fmt);
+	va_copy(ap2, ap);
+	l = vsnprintf(0, 0, fmt, ap2);
+	va_end(ap2);
+	if(l < 0 || !(*s=malloc(l+1U))) return -1;
+	return vsnprintf(*s, l+1U, fmt, ap);
+}
 
 static void write_help()
 {
@@ -169,9 +183,11 @@ static int out_to_fd(z_stream *strm, char *in_file, int in_fd,
 		do {
 			read_amt = read(in_fd, in, sizeof in);
 			if(read_amt < 0) {
-				perror(in_file);
-				ret = 1;
-				goto cleanup;
+				if(opt_verbosity >= 1) {
+					fprintf(stderr, "%s: ", program_name);
+					perror(in_file);
+				}
+				return 1;
 			}
 			if(read_amt == 0)
 				flush = Z_FINISH;
@@ -183,7 +199,7 @@ static int out_to_fd(z_stream *strm, char *in_file, int in_fd,
 				deflate(strm, flush);
 				if(do_write(out_fd, out,
 				            sizeof out - strm->avail_out) != 0)
-					goto cleanup;
+					return 1;
 			} while(strm->avail_out == 0);
 		} while(flush != Z_FINISH);
 	} else {
@@ -192,16 +208,17 @@ static int out_to_fd(z_stream *strm, char *in_file, int in_fd,
 		do {
 			read_amt = read(in_fd, in, sizeof in);
 			if(read_amt < 0) {
-				perror(in_file);
-				ret = 1;
-				goto cleanup;
+				if(opt_verbosity >= 1) {
+					fprintf(stderr, "%s: ", program_name);
+					perror(in_file);
+				}
+				return 1;
 			}
 			if(read_amt == 0) {
 				if(opt_verbosity >= 1)
 					fprintf(stderr, "%s: %s: bad input.\n",
 						program_name, in_file);
-				ret = 1;
-				goto cleanup;
+				return 1;
 			}
 			strm->next_in = in;
 			strm->avail_in = read_amt;
@@ -214,21 +231,14 @@ static int out_to_fd(z_stream *strm, char *in_file, int in_fd,
 						fprintf(stderr, "%s: %s: bad "
 								"input.\n",
 							program_name, in_file);
-					ret = 1;
-					goto cleanup;
+					return 1;
 				}
 				if(do_write(out_fd, out,
 				            sizeof out - strm->avail_out) != 0)
-					goto cleanup;
+					return 1;
 			} while(strm->avail_out == 0);
 		} while(err != Z_STREAM_END);
 	}
-
-cleanup:
-	close(in_fd);
-	close(out_fd);
-	close_stream(strm);
-	return ret;
 }
 
 static int out_to_stdout(z_stream *strm, char *in_file, int in_fd)
@@ -244,8 +254,6 @@ static int out_to_filename(z_stream *strm, char *in_file, int in_fd,
 	out_fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
 	if(out_fd < 0) {
 		perror(filename);
-		close_stream(strm);
-		close(in_fd);
 		return 1;
 	}
 
@@ -254,23 +262,28 @@ static int out_to_filename(z_stream *strm, char *in_file, int in_fd,
 
 static int handle_stdin()
 {
+	int ret = 0;
 	z_stream strm = {0};
 	char *out_path = NULL;
 
 	if(init_stream(&strm))
 		return 1;
 	if(opt_restore_name && !opt_compress && !opt_stdout) {
-		int res = read_header(&strm, 0);
-		if(res != 0) {
-			close_stream(&strm);
-			return res;
+		ret = read_header(&strm, 0);
+		if(ret != 0) {
+			goto cleanup;
 		}
 		gz_header header;
 		inflateGetHeader(&strm, &header);
-		if(header.name)
-			return out_to_filename(&strm, "stdin", 0, header.name);
+		if(header.name) {
+			ret = out_to_filename(&strm, "stdin", 0, header.name);
+			goto cleanup;
+		}
 	}
-	return out_to_stdout(&strm, "stdin", 0);
+	ret = out_to_stdout(&strm, "stdin", 0);
+cleanup:
+	close_stream(&strm);
+	return ret;
 }
 
 static int handle_dir(char *path, int in_fd)
@@ -283,26 +296,30 @@ static int handle_path(char *path)
 	int in_fd;
 	struct stat stat_buf;
 	z_stream strm = {0};
-	char out_path_buf[PATH_MAX] = {0};
-	char *out_path = out_path_buf;
+	char *out_path = 0;
 	int ret = 0;
 
 	if((in_fd = open(path, O_RDONLY)) < 0) {
-		perror(path);
+		if(opt_verbosity >= 1) {
+			fprintf(stderr, "%s: ", program_name);
+			perror(path);
+		}
 		return 1;
 	}
 
 	if(fstat(in_fd, &stat_buf) == -1) {
-		perror(path);
+		if(opt_verbosity >= 1) {
+			fprintf(stderr, "%s: ", program_name);
+			perror(path);
+		}
 		ret = 1;
 		goto cleanup_fd;
 	}
 
 	if((stat_buf.st_mode & S_IFMT) == S_IFDIR) {
 		if(opt_recursive) {
-			int ret = handle_dir(path, in_fd);
-			close(in_fd);
-			return ret;
+			ret = handle_dir(path, in_fd);
+			goto cleanup_fd;
 		} else {
 			if(opt_verbosity >= 1)
 				fprintf(stderr, "%s: %s is a directory -- "
@@ -330,49 +347,33 @@ static int handle_path(char *path)
 			gz_header header;
 			inflateGetHeader(&strm, &header);
 			if(header.name)
-				out_path = header.name;
-		} else {
-			if(snprintf(out_path_buf, PATH_MAX, "%s", path)
-			    >= PATH_MAX) {
-				fprintf(stderr, "%s: input path %s too long "
-						"-- ignoring.\n",
-					program_name, path);
-				ret = 2;
-				goto cleanup_strm;
-			}
-			remove_suffix(out_path, opt_suffix);
+				out_path = strdup(header.name);
 		}
-	} else {
-		char dir_path_buf[PATH_MAX];
-		char *dir_path;
-		int len;
-		if(snprintf(dir_path_buf, PATH_MAX, "%s", path) >= PATH_MAX) {
-			fprintf(stderr, "%s: input path %s too long -- "
-					"ignoring.\n",
-				program_name, path);
+		if(!out_path) {
+			out_path = strdup(path);
+			if(out_path)
+				remove_suffix(out_path, opt_suffix);
+		}
+		if(!out_path) {
+			if(opt_verbosity >= 1)
+				perror(program_name);
 			ret = 2;
 			goto cleanup_strm;
 		}
-		dir_path = dirname(dir_path_buf);
-		if(strcmp(dir_path, ".") == 0) {
-			len = snprintf(out_path_buf, PATH_MAX, "%s%s", path,
-			               opt_suffix);
-		} else {
-			len = snprintf(out_path_buf, PATH_MAX, "%s/%s%s",
-			               dir_path, path, opt_suffix);
-		}
-		if(len >= PATH_MAX) {
+	} else {
+		int len;
+		len = asprintf(&out_path, "%s%s", path, opt_suffix);
+		if(len < 0) {
 			if(opt_verbosity >= 1)
-				fprintf(stderr, "%s: output path %s too long "
-						"-- ignoring %s.\n",
-					program_name, out_path, path);
+				perror(program_name);
 			ret = 2;
 			goto cleanup_strm;
 		}
 	}
 
-	return out_to_filename(&strm, path, in_fd, out_path);
+	ret = out_to_filename(&strm, path, in_fd, out_path);
 
+	free(out_path);
 cleanup_strm:
 	close_stream(&strm);
 cleanup_fd:
