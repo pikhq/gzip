@@ -298,7 +298,8 @@ static int out_to_filename(z_stream *strm, char *in_file, int in_fd,
 {
 	int out_fd;
 
-	out_fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+	out_fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC
+	                      | (opt_force ? 0 : O_EXCL), 0666);
 	if(out_fd < 0) {
 		perror(filename);
 		return 1;
