@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #define _FILE_OFFSET_BITS 64
 
+#include <dirent.h>
 #include <unistd.h>
 #include <libgen.h>
 #include <getopt.h>
@@ -59,6 +60,8 @@ static bool  opt_rsyncable	= false;
 static char *opt_suffix		= ".gz";
 static bool  opt_test		= false;
 static int   opt_level		= 6;
+
+static int handle_path(char*);
 
 static int asprintf(char **s, const char *fmt, ...)
 {
@@ -424,7 +427,49 @@ cleanup:
 
 static int handle_dir(char *path, int in_fd)
 {
-	return 1;
+	DIR *dir;
+	struct dirent *dirent;
+	int ret = 0;
+
+	dir = fdopendir(in_fd);
+	if(!dir) {
+		report_error(errno, "%s", path);
+		return 1;
+	}
+
+	errno = 0;
+	while(dirent = readdir(dir)) {
+		char *buf;
+		int tmp;
+
+		if(strcmp(dirent->d_name, ".") == 0
+		  || strcmp(dirent->d_name, "..") == 0)
+			continue;
+
+		if(asprintf(&buf, "%s/%s", path, dirent->d_name) == -1) {
+			report_error(errno, "%s", path);
+			ret = 1;
+			// continue processing the directory before returning
+			continue;
+		}
+		
+		tmp = handle_path(buf);
+		if(tmp) {
+			ret = tmp;
+		}
+		free(buf);
+
+		errno = 0;
+	}
+
+	if(errno) {
+		report_error(errno, "%s", path);
+		ret = 1;
+	}
+
+	closedir(dir);
+
+	return ret;
 }
 
 static int handle_path(char *path)
