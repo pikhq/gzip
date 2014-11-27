@@ -15,6 +15,7 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <stdint.h>
 
 #include <zlib.h>
 
@@ -213,39 +214,39 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 
 		if(buf[buf_alloc - 1] != '\0') {
 			char *new_buf;
-			if(buf_alloc == UINT_MAX) {
-				/* At this point, zlib won't give us any more
-				 * input. But we don't want to throw away any
-				 * of the name already, so we'll just make the
-				 * buffer one larger.
-				 * So, the buffer is UINT_MAX+1 long, and the
-				 * amount of buffer that zlib will write to is
-				 * UINT_MAX long.
-				 */
-				buf_alloc++;
-				new_buf = realloc(buf, buf_alloc);
-				if(!new_buf) {
-					report_error(errno, "%s", in_file);
-					ret = 1;
-					goto error;
-				}
-				new_buf[buf_alloc-1] = '\0';
-				buf = new_buf;
-				head->name = buf;
-				head->name_max = UINT_MAX;
+			if(buf_alloc == SIZE_MAX) {
+				errno = ENOMEM;
+				report_error(errno, "%s", in_file);
+				ret = 1;
+				goto error;
+			}
+
+			/* Check for overflow by checking the addition to see
+			 * if it wraps around.
+			 */
+			if((size_t)(buf_alloc + buf_alloc/2) < buf_alloc) {
+				buf_alloc = SIZE_MAX;
 			} else {
 				buf_alloc = buf_alloc + buf_alloc/2;
-				if(buf_alloc > UINT_MAX) {
-					buf_alloc = UINT_MAX;
-				}
-				new_buf = realloc(buf, buf_alloc);
-				if(!new_buf) {
-					report_error(errno, "%s", in_file);
-					ret = 1;
-					goto error;
-				}
-				new_buf[buf_alloc-1] = '\0';
-				buf = new_buf;
+			}
+			new_buf = realloc(buf, buf_alloc);
+			if(!new_buf) {
+				report_error(errno, "%s", in_file);
+				ret = 1;
+				goto error;
+			}
+			new_buf[buf_alloc-1] = '\0';
+			buf = new_buf;
+			/* zlib can only handle a UINT_MAX-length buffer, but
+			 * we have no such limitation. So, we make sure that
+			 * zlib only sees a buffer of that long or smaller,
+			 * while keeping track of the actual size of the whole
+			 * thing.
+			 */
+			if(buf_alloc > UINT_MAX) {
+				head->name = buf + buf_alloc - UINT_MAX;
+				head->name_max = UINT_MAX;
+			} else {
 				head->name = buf;
 				head->name_max = buf_alloc;
 			}
@@ -275,11 +276,13 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 		goto error;
 	}
 
+	head->name = buf;
+
 	return 0;
 error:
 	free(buf);
 	head->name = 0;
-	head->name_max;
+	head->name_max = 0;
 	return ret;
 }
 
