@@ -36,7 +36,6 @@ static const struct option options[] = {
 	{"name",	no_argument,		NULL, 'N'},
 	{"quiet",	no_argument,		NULL, 'q'},
 	{"recursive",	no_argument,		NULL, 'r'},
-	{"rsyncable",	no_argument,		NULL, 'R'},
 	{"suffix",	required_argument,	NULL, 'S'},
 	{"test",	no_argument,		NULL, 't'},
 	{"verbose",	no_argument,		NULL, 'v'},
@@ -56,7 +55,6 @@ static bool  opt_store_name	= true;
 static bool  opt_restore_name	= false;
 static int   opt_verbosity	= 1;
 static bool  opt_recursive	= false;
-static bool  opt_rsyncable	= false;
 static char *opt_suffix		= ".gz";
 static int   opt_level		= 6;
 
@@ -110,7 +108,6 @@ static void write_help()
 			"name and time stamp (default)\n"
 		"  -q, --quiet          suppress all warnings\n"
 		"  -r, --recursive      operate recursively on directories\n"
-		"  --rsyncable          generate rsync-friendly output\n"
 		"  -S, --suffix=SUF     use suffix SUF on compressed files\n"
 		"  -t, --test           test the integrity of compressed "
 			"files\n"
@@ -635,9 +632,6 @@ int main(int argc, char **argv)
 			break;
 		case 'r':
 			opt_recursive = true;
-			break;
-		case 'R':
-			opt_rsyncable = true;
 			break;
 		case 'S':
 			opt_suffix = optarg;
