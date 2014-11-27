@@ -673,10 +673,14 @@ int main(int argc, char **argv)
 	}
 
 	for(; n; v++, n--) {
+		int tmp;
 		if(strcmp(*v, "-") == 0) {
-			handle_stdin();
+			tmp = handle_stdin();
 		} else {
-			handle_path(*v);
+			tmp = handle_path(*v);
 		}
+		if(tmp > ret_val)
+			ret_val = tmp;
 	}
+	return ret_val;
 }
