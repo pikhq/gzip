@@ -355,6 +355,10 @@ static int handle_path(char *path)
 	z_stream strm = {0};
 	char *out_path = 0;
 	int ret = 0;
+	/* This header serves two purposes: first, when compressing it is used
+	 * to set up what the output header will be. Second, when decompressing
+	 * it serves as the storage for the input header.
+	 */
 	gz_header header = {
 		.name = (char[PATH_MAX]){0},
 		.name_max = PATH_MAX
@@ -411,6 +415,18 @@ static int handle_path(char *path)
 		}
 	} else {
 		int len;
+
+		if(opt_store_name) {
+			strncpy(header.name, path, header.name_max);
+			header.name[header.name_max-1] = '\0';
+
+			header.name = basename(header.name);
+
+			header.time = stat_buf.st_mtime;
+		}
+
+		deflateSetHeader(&strm, &header);
+
 		len = asprintf(&out_path, "%s%s", path, opt_suffix);
 		if(len < 0) {
 			report_error(errno, 0);
