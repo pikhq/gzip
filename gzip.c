@@ -180,9 +180,44 @@ static int remove_suffix(char *str, char *suffix)
 	return 1;
 }
 
-static int read_header(z_stream *strm, int in_fd)
+static int read_header(z_stream *strm, gz_header *head, char *in_file,
+                       int in_fd)
 {
-	return 1;
+	char in = 0;
+	char out = 0;
+	int res;
+
+	res = inflateGetHeader(strm, head);
+
+	while(res == Z_OK && head->done == 0) {
+		size_t read_amt;
+
+		strm->next_in = &in;
+		strm->avail_in = 1;
+		strm->next_out = &out;
+		strm->avail_out = 1;
+
+		read_amt = read(in_fd, &in, 1);
+		if(read_amt < 0) {
+			report_error(errno, "%s", in_file);
+			return 1;
+		}
+		if(read_amt == 0) {
+			report_error(0, "%s: bad input", in_file);
+			return 1;
+		}
+
+		res = inflate(strm, Z_BLOCK);
+	}
+
+	if(res != Z_OK) {
+		if(strm->msg)
+			report_error(0, "%s: %s", in_file, strm->msg);
+		else
+			report_error(0, "%s: %s", in_file, zError(res));
+		return 1;
+	}
+	return 0;
 }
 
 static int out_to_fd(z_stream *strm, char *in_file, int in_fd,
@@ -235,8 +270,14 @@ static int out_to_fd(z_stream *strm, char *in_file, int in_fd,
 				strm->next_out = out;
 				err = inflate(strm, Z_NO_FLUSH);
 				if(err != Z_OK && err != Z_STREAM_END) {
-					report_error(0, "%s: bad input",
-					             in_file);
+					if(strm->msg)
+						report_error(0, "%s: %s",
+						             in_file,
+						             strm->msg);
+					else
+						report_error(0, "%s: %s",
+						             in_file,
+						             zError(err));
 					return 1;
 				}
 				if(do_write(out_fd, out,
@@ -271,18 +312,28 @@ static int handle_stdin()
 	int ret = 0;
 	z_stream strm = {0};
 	char *out_path = NULL;
+	gz_header header = {
+		.name = (char[PATH_MAX]){0},
+		.name_max = PATH_MAX
+	};
 
 	if(init_stream(&strm))
 		return 1;
 	if(opt_restore_name && !opt_compress && !opt_stdout) {
-		ret = read_header(&strm, 0);
+		ret = read_header(&strm, &header, "stdin", 0);
 		if(ret != 0) {
 			goto cleanup;
 		}
-		gz_header header;
-		inflateGetHeader(&strm, &header);
 		if(header.name) {
-			ret = out_to_filename(&strm, "stdin", 0, header.name);
+			char *name = strndup(header.name, header.name_max);
+			if(!name) {
+				report_error(errno, 0);
+				ret = 1;
+				goto cleanup;
+			}
+
+			ret = out_to_filename(&strm, "stdin", 0, name);
+			free(name);
 			goto cleanup;
 		}
 	}
@@ -304,6 +355,10 @@ static int handle_path(char *path)
 	z_stream strm = {0};
 	char *out_path = 0;
 	int ret = 0;
+	gz_header header = {
+		.name = (char[PATH_MAX]){0},
+		.name_max = PATH_MAX
+	};
 
 	if((in_fd = open(path, O_RDONLY)) < 0) {
 		report_error(errno, "%s", path);
@@ -336,15 +391,13 @@ static int handle_path(char *path)
 
 	if(!opt_compress) {
 		if(opt_restore_name) {
-			int res = read_header(&strm, in_fd);
+			int res = read_header(&strm, &header, path, in_fd);
 			if(res != 0) {
 				ret = res;
 				goto cleanup_strm;
 			}
-			gz_header header;
-			inflateGetHeader(&strm, &header);
 			if(header.name)
-				out_path = strdup(header.name);
+				out_path = strndup(header.name, header.name_max);
 		}
 		if(!out_path) {
 			out_path = strdup(path);
