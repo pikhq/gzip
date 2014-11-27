@@ -186,8 +186,22 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 	char in = 0;
 	char out = 0;
 	int res;
+	int ret = 0;
+
+	char *buf = 0;
+	size_t buf_alloc = 64;
 
 	res = inflateGetHeader(strm, head);
+
+	buf = malloc(buf_alloc);
+	if(!buf) {
+		report_error(errno, "%s", in_file);
+		ret = 1;
+		goto error;
+	}
+	head->name = buf;
+	head->name_max = buf_alloc;
+	buf[buf_alloc - 1] = '\0';
 
 	while(res == Z_OK && head->done == 0) {
 		size_t read_amt;
@@ -197,14 +211,56 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 		strm->next_out = &out;
 		strm->avail_out = 1;
 
+		if(buf[buf_alloc - 1] != '\0') {
+			char *new_buf;
+			if(buf_alloc == UINT_MAX) {
+				/* At this point, zlib won't give us any more
+				 * input. But we don't want to throw away any
+				 * of the name already, so we'll just make the
+				 * buffer one larger.
+				 * So, the buffer is UINT_MAX+1 long, and the
+				 * amount of buffer that zlib will write to is
+				 * UINT_MAX long.
+				 */
+				buf_alloc++;
+				new_buf = realloc(buf, buf_alloc);
+				if(!new_buf) {
+					report_error(errno, "%s", in_file);
+					ret = 1;
+					goto error;
+				}
+				new_buf[buf_alloc-1] = '\0';
+				buf = new_buf;
+				head->name = buf;
+				head->name_max = UINT_MAX;
+			} else {
+				buf_alloc = buf_alloc + buf_alloc/2;
+				if(buf_alloc > UINT_MAX) {
+					buf_alloc = UINT_MAX;
+				}
+				new_buf = realloc(buf, buf_alloc);
+				if(!new_buf) {
+					report_error(errno, "%s", in_file);
+					ret = 1;
+					goto error;
+				}
+				new_buf[buf_alloc-1] = '\0';
+				buf = new_buf;
+				head->name = buf;
+				head->name_max = buf_alloc;
+			}
+		}
+
 		read_amt = read(in_fd, &in, 1);
 		if(read_amt < 0) {
 			report_error(errno, "%s", in_file);
-			return 1;
+			ret = 1;
+			goto error;
 		}
 		if(read_amt == 0) {
 			report_error(0, "%s: bad input", in_file);
-			return 1;
+			ret = 1;
+			goto error;
 		}
 
 		res = inflate(strm, Z_BLOCK);
@@ -215,9 +271,16 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 			report_error(0, "%s: %s", in_file, strm->msg);
 		else
 			report_error(0, "%s: %s", in_file, zError(res));
-		return 1;
+		ret = 1;
+		goto error;
 	}
+
 	return 0;
+error:
+	free(buf);
+	head->name = 0;
+	head->name_max;
+	return ret;
 }
 
 static int out_to_fd(z_stream *strm, char *in_file, int in_fd,
@@ -335,8 +398,6 @@ static int handle_stdin()
 	gz_header header = {
 		.text = opt_ascii_text ? 0 : 1,
 		.os = 3, /* Unix */
-		.name = (char[PATH_MAX]){0},
-		.name_max = PATH_MAX
 	};
 
 	if(init_stream(&strm))
@@ -347,15 +408,8 @@ static int handle_stdin()
 			goto cleanup;
 		}
 		if(header.name) {
-			char *name = strndup(header.name, header.name_max);
-			if(!name) {
-				report_error(errno, 0);
-				ret = 1;
-				goto cleanup;
-			}
-
-			ret = out_to_filename(&strm, "stdin", 0, name, header.time);
-			free(name);
+			ret = out_to_filename(&strm, "stdin", 0, header.name, header.time);
+			free(header.name);
 			goto cleanup;
 		}
 	}
@@ -384,8 +438,6 @@ static int handle_path(char *path)
 	gz_header header = {
 		.text = opt_ascii_text ? 0 : 1,
 		.os = 3, /* Unix */
-		.name = (char[PATH_MAX]){0},
-		.name_max = PATH_MAX
 	};
 
 	if((in_fd = open(path, O_RDONLY)) < 0) {
@@ -424,8 +476,10 @@ static int handle_path(char *path)
 				ret = res;
 				goto cleanup_strm;
 			}
-			if(header.name)
-				out_path = strndup(header.name, header.name_max);
+			if(header.name) {
+				out_path = header.name;
+				header.name = 0;
+			}
 		}
 		if(!out_path) {
 			out_path = strdup(path);
@@ -441,10 +495,24 @@ static int handle_path(char *path)
 		int len;
 
 		if(opt_store_name) {
-			strncpy(header.name, path, header.name_max);
-			header.name[header.name_max-1] = '\0';
+			char *buf1;
+			char *buf2 = NULL;
 
-			header.name = basename(header.name);
+			buf1 = strdup(path);
+			if(!buf1) {
+				report_error(errno, 0);
+				ret = 1;
+				goto cleanup_strm;
+			}
+			buf2 = strdup(basename(buf1));
+			if(!buf2) {
+				report_error(errno, 0);
+				free(buf1);
+				ret = 1;
+				goto cleanup_strm;
+			}
+			free(buf1);
+			header.name = buf2;
 
 			header.time = stat_buf.st_mtime;
 		}
@@ -461,6 +529,7 @@ static int handle_path(char *path)
 
 	ret = out_to_filename(&strm, path, in_fd, out_path, header.time);
 
+	free(header.name);
 	free(out_path);
 cleanup_strm:
 	close_stream(&strm);
