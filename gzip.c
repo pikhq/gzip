@@ -58,7 +58,6 @@ static int   opt_verbosity	= 1;
 static bool  opt_recursive	= false;
 static bool  opt_rsyncable	= false;
 static char *opt_suffix		= ".gz";
-static bool  opt_test		= false;
 static int   opt_level		= 6;
 
 static int handle_path(char*);
@@ -637,7 +636,10 @@ int main(int argc, char **argv)
 			opt_suffix = optarg;
 			break;
 		case 't':
-			opt_test = true;
+			/* zlib always tests integrity, and I agree with this
+			 * behavior. As such, just implement the option as a
+			 * no-op.
+			 */
 			break;
 		case 'v':
 			opt_verbosity = 2;
