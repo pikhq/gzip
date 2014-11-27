@@ -313,6 +313,12 @@ static int handle_stdin()
 	z_stream strm = {0};
 	char *out_path = NULL;
 	gz_header header = {
+		.text = opt_ascii_text ? 0 : 1,
+#ifdef _POSIX_VERSION
+		.os = 3, /* Unix */
+#else
+		.os = 255, /* Unknown */
+#endif
 		.name = (char[PATH_MAX]){0},
 		.name_max = PATH_MAX
 	};
@@ -360,6 +366,12 @@ static int handle_path(char *path)
 	 * it serves as the storage for the input header.
 	 */
 	gz_header header = {
+		.text = opt_ascii_text ? 0 : 1,
+#ifdef _POSIX_VERSION
+		.os = 3, /* Unix */
+#else
+		.os = 255, /* Unknown */
+#endif
 		.name = (char[PATH_MAX]){0},
 		.name_max = PATH_MAX
 	};
