@@ -294,9 +294,9 @@ static int out_to_stdout(z_stream *strm, char *in_file, int in_fd)
 }
 
 static int out_to_filename(z_stream *strm, char *in_file, int in_fd,
-                           char *filename)
+                           char *filename, time_t time)
 {
-	int out_fd;
+	int out_fd, ret;
 
 	out_fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC
 	                      | (opt_force ? 0 : O_EXCL), 0666);
@@ -305,7 +305,26 @@ static int out_to_filename(z_stream *strm, char *in_file, int in_fd,
 		return 1;
 	}
 
-	return out_to_fd(strm, in_file, in_fd, filename, out_fd);	
+	ret = out_to_fd(strm, in_file, in_fd, filename, out_fd);	
+	if(ret)
+		goto cleanup;
+
+	if(time != 0 && !opt_compress && opt_restore_name) {
+		struct timespec timespecs[2] = {
+			{.tv_nsec = UTIME_OMIT},
+			{.tv_sec = time}
+		};
+		if(futimens(out_fd, timespecs)) {
+			report_error(errno, "%s", filename);
+			ret = 1;
+			goto cleanup;
+		}
+	}
+
+cleanup:
+	close(out_fd);
+	return ret;
+
 }
 
 static int handle_stdin()
@@ -339,7 +358,7 @@ static int handle_stdin()
 				goto cleanup;
 			}
 
-			ret = out_to_filename(&strm, "stdin", 0, name);
+			ret = out_to_filename(&strm, "stdin", 0, name, header.time);
 			free(name);
 			goto cleanup;
 		}
@@ -448,7 +467,7 @@ static int handle_path(char *path)
 		}
 	}
 
-	ret = out_to_filename(&strm, path, in_fd, out_path);
+	ret = out_to_filename(&strm, path, in_fd, out_path, header.time);
 
 	free(out_path);
 cleanup_strm:
