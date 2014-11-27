@@ -576,6 +576,13 @@ static int handle_path(char *path)
 
 	ret = out_to_filename(&strm, path, in_fd, out_path, header.time);
 
+	if(ret == 0 && !opt_keep) {
+		if(remove(path)) {
+			report_error(errno, "%s");
+			ret = 1;
+		}
+	}
+
 	free(header.name);
 	free(out_path);
 cleanup_strm:
