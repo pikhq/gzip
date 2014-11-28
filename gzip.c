@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #define _FILE_OFFSET_BITS 64
 
+#include <time.h>
 #include <dirent.h>
 #include <unistd.h>
 #include <libgen.h>
@@ -17,6 +18,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <stdint.h>
+#include <inttypes.h>
 
 #include <zlib.h>
 
@@ -354,6 +356,133 @@ static int out_to_fd(z_stream *strm, char *in_file, int in_fd,
 	return ret;
 }
 
+static int out_stats(z_stream *strm, char *in_file, int in_fd)
+{
+	static bool first_time = true;
+	int err;
+	int ret = 0;
+	char in[4096];
+	char out[4096];
+
+	uintmax_t compr_total = 0;
+	uintmax_t uncompr_total = 0;
+
+	int uintmax_width;
+
+	gz_header header;
+
+	for(uintmax_t n = UINTMAX_MAX; n > 9; n /= 10)
+		uintmax_width++;
+
+	err = read_header(strm, &header, in_file, in_fd);
+	if(err) return err;
+
+	compr_total += strm->total_in;
+
+	do {
+		ssize_t read_amt = read(in_fd, in, sizeof in);
+		if(read_amt < 0) {
+			report_error(0, "%s", in_file);
+			ret = 1;
+			goto cleanup;
+		}
+		if(read_amt == 0) {
+			report_error(0, "%s: bad input", in_file);
+			ret = 1;
+			goto cleanup;
+		}
+		compr_total += read_amt;
+		strm->next_in = in;
+		strm->avail_in = read_amt;
+		do {
+			strm->avail_out = sizeof out;
+			strm->next_out = out;
+			err = inflate(strm, Z_NO_FLUSH);
+			if(err != Z_OK && err != Z_STREAM_END) {
+				if(strm->msg)
+					report_error(0, "%s: %s", in_file,
+					             strm->msg);
+				else
+					report_error(0, "%s: %s", in_file,
+					             zError(err));
+				ret = 1;
+				goto cleanup;
+			}
+			uncompr_total += sizeof out - strm->avail_out;
+		} while(strm->avail_out == 0);
+	} while(err != Z_STREAM_END);
+
+	if(first_time) {
+		if(opt_verbosity == 2) {
+			printf("method   crc      date     time     ");
+		}
+		if(opt_verbosity > 0) {
+			printf("%*.*s %*.*s  ratio  uncompressed name\n",
+			       uintmax_width, uintmax_width, "compressed",
+			       uintmax_width, uintmax_width, "uncompressed");
+		}
+		first_time = false;
+	}
+
+	if(opt_verbosity == 2) {
+		struct tm *tm = localtime(&header.time);
+		char *buf;
+		size_t buf_alloc;
+		size_t strftime_res;
+
+		printf("deflate  %08lx ", strm->adler);
+
+		buf = malloc(30);
+		buf_alloc = 30;
+		if(!buf) {
+			report_error(errno, "%s", in_file);
+			ret = 1;
+			goto cleanup;
+		}
+		do {
+			if(buf_alloc == SIZE_MAX) {
+				errno = ENOMEM;
+				report_error(errno, "%s", in_file);
+				free(buf);
+				ret = 1;
+				goto cleanup;
+			}
+			if(buf_alloc + buf_alloc/2 < buf_alloc) {
+				buf_alloc = SIZE_MAX;
+			} else {
+				buf_alloc += buf_alloc/2;
+			}
+
+			char *new_buf = realloc(buf, buf_alloc);
+			if(!new_buf) {
+				report_error(errno, "%s", in_file);
+				ret = 1;
+				free(buf);
+				goto cleanup;
+			}
+			buf = new_buf;
+			errno = 0;
+		} while(!strftime(buf, buf_alloc, "%x %X ", tm) && errno == 0);
+		if(errno) {
+			report_error(errno, "%s", in_file);
+			free(buf);
+			ret = 1;
+			goto cleanup;
+		}
+		printf("%s", buf);
+		free(buf);
+	}
+	
+	printf("%*"PRIuMAX" %*"PRIuMAX"  %5.2f  %s\n", uintmax_width,
+	       compr_total, uintmax_width, uncompr_total,
+	       ((double)(compr_total) / uncompr_total) * 100.0, header.name);
+
+cleanup:
+	free(header.name);
+
+	return ret;
+}
+
 static int out_to_stdout(z_stream *strm, char *in_file, int in_fd)
 {
 	if(!opt_force && opt_compress && isatty(1)) {
@@ -421,6 +550,12 @@ static int handle_stdin()
 
 	if(init_stream(&strm))
 		return 1;
+
+	if(opt_list) {
+		ret = out_stats(&strm, "stdin", 0);
+		goto cleanup;
+	}
+
 	if(opt_restore_name && !opt_compress && !opt_stdout) {
 		ret = read_header(&strm, &header, "stdin", 0);
 		if(ret != 0) {
@@ -526,8 +661,14 @@ static int handle_path(char *path)
 	if(init_stream(&strm))
 		goto cleanup_fd;
 
+	if(opt_list) {
+		ret = out_stats(&strm, path, in_fd);
+		goto cleanup_strm;
+	}
+
 	if(opt_stdout) {
-		return out_to_stdout(&strm, path, in_fd);
+		ret = out_to_stdout(&strm, path, in_fd);
+		goto cleanup_strm;
 	}
 
 	if(!opt_compress) {
@@ -637,6 +778,7 @@ int main(int argc, char **argv)
 			break;
 		case 'l':
 			opt_list = true;
+			opt_compress = false;
 			break;
 		case 'n':
 			opt_restore_name = opt_store_name = false;
