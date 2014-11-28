@@ -351,6 +351,7 @@ static int out_to_fd(z_stream *strm, char *in_file, int in_fd,
 			} while(strm->avail_out == 0);
 		} while(err != Z_STREAM_END);
 	}
+	return ret;
 }
 
 static int out_to_stdout(z_stream *strm, char *in_file, int in_fd)
