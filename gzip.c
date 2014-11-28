@@ -387,6 +387,9 @@ static int out_to_filename(z_stream *strm, char *in_file, int in_fd,
 	}
 
 cleanup:
+	if(ret)
+		if(remove(filename))
+			report_error(errno, "%s", filename);
 	close(out_fd);
 	return ret;
 
