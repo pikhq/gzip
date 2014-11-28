@@ -355,6 +355,12 @@ static int out_to_fd(z_stream *strm, char *in_file, int in_fd,
 
 static int out_to_stdout(z_stream *strm, char *in_file, int in_fd)
 {
+	if(!opt_force && opt_compress && isatty(1)) {
+		report_error(0, "compressed data not written to a terminal.\n"
+		             "For help, type %s -h",
+		             program_name);
+		return 1;
+	}
 	return out_to_fd(strm, in_file, in_fd, "stdout", 1);
 }
 
@@ -404,6 +410,13 @@ static int handle_stdin()
 		.text = opt_ascii_text ? 0 : 1,
 		.os = 3, /* Unix */
 	};
+
+	if(!opt_force && !opt_compress) {
+		report_error(0, "compressed data not read from a terminal.\n"
+		             "For help, type: %s -h\n",
+		             program_name);
+		return 1;
+	}
 
 	if(init_stream(&strm))
 		return 1;
