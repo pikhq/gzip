@@ -137,7 +137,7 @@ static void write_version()
 static int init_stream(z_stream *strm)
 {
 	if(opt_compress) {
-		if(deflateInit2(strm, opt_level, Z_DEFLATED, 31, 8,
+		if(deflateInit2(strm, opt_level, Z_DEFLATED, 31, 9,
 				Z_DEFAULT_STRATEGY) != Z_OK) {
 			report_error(0, "%s", strm->msg);
 			return 1;
