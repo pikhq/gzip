@@ -541,7 +541,7 @@ static int handle_stdin()
 		.os = 3, /* Unix */
 	};
 
-	if(!opt_force && !opt_compress) {
+	if(!opt_force && !opt_compress && isatty(0)) {
 		report_error(0, "compressed data not read from a terminal.\n"
 		             "For help, type: %s -h\n",
 		             program_name);
