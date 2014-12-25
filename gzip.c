@@ -10,6 +10,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -171,15 +172,18 @@ static void close_stream(z_stream *strm)
 	}
 }
 
-static int remove_suffix(char *str, char *suffix)
+static int remove_suffix(char *str, char *suffix, bool case_insensitive)
 {
+	int (*cmp)(const char*,const char*) = strcmp;
+	if(case_insensitive)
+		cmp = strcasecmp;
 	for(char *s = str; *s; s++) {
-		if(strcmp(s, suffix) == 0) {
+		if(cmp(s, suffix) == 0) {
 			*s = 0;
-			return 0;
+			return 1;
 		}
 	}
-	return 1;
+	return 0;
 }
 
 static int read_header(z_stream *strm, gz_header *head, char *in_file,
@@ -685,8 +689,27 @@ static int handle_path(char *path)
 		}
 		if(!out_path) {
 			out_path = strdup(path);
-			if(out_path)
-				remove_suffix(out_path, opt_suffix);
+			if(!out_path) {
+				report_error(errno, 0);
+				ret = 2;
+				goto cleanup_strm;
+			}
+
+			if(!remove_suffix(out_path, opt_suffix, false)) {
+				char *suffixes[] = {
+					".gz",
+					"-gz",
+					".z",
+					"-z",
+					"_z",
+					".tgz",
+					0
+				};
+				for(char **suffix = suffixes; *suffix; suffix++)
+					if(remove_suffix(out_path, *suffix,
+					                 true))
+						break;
+			}
 		}
 		if(!out_path) {
 			report_error(errno, 0);
