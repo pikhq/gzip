@@ -582,6 +582,7 @@ static int handle_dir(char *path, int in_fd)
 	dir = fdopendir(in_fd);
 	if(!dir) {
 		report_error(errno, "%s", path);
+		close(in_fd);
 		return 1;
 	}
 
@@ -649,8 +650,7 @@ static int handle_path(char *path)
 
 	if(S_ISDIR(stat_buf.st_mode)) {
 		if(opt_recursive) {
-			ret = handle_dir(path, in_fd);
-			goto cleanup_fd;
+			return handle_dir(path, in_fd);
 		} else {
 			report_error(0, "%s: is a directory", path);
 			ret = 2;
