@@ -1,11 +1,7 @@
-#define _POSIX_C_SOURCE 200809L
-#define _FILE_OFFSET_BITS 64
-
 #include <time.h>
 #include <dirent.h>
 #include <unistd.h>
 #include <libgen.h>
-#include <getopt.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -22,6 +18,9 @@
 #include <inttypes.h>
 
 #include <zlib.h>
+
+#include "asprintf.h"
+#include "getopt_long.h"
 
 static char *program_name;
 
@@ -62,18 +61,6 @@ static char *opt_suffix		= ".gz";
 static int   opt_level		= 6;
 
 static int handle_path(char*);
-
-static int asprintf(char **s, const char *fmt, ...)
-{
-	int l;
-	va_list ap, ap2;
-	va_start(ap, fmt);
-	va_copy(ap2, ap);
-	l = vsnprintf(0, 0, fmt, ap2);
-	va_end(ap2);
-	if(l < 0 || !(*s=malloc(l+1U))) return -1;
-	return vsnprintf(*s, l+1U, fmt, ap);
-}
 
 static void report_error(int err, const char *fmt, ...)
 {
