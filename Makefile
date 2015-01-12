@@ -15,9 +15,9 @@ endif
 LDLIBS+=$(ZLIB_LIBS)
 CFLAGS+=$(ZLIB_CFLAGS)
 
-all: gzip
+all: src/gzip
 
-gzip: gzip.o
+src/gzip: src/gzip.o
 
 clean:
-	-rm -f gzip gzip.o
+	-rm -f src/gzip src/gzip.o
