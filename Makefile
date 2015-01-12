@@ -1,6 +1,4 @@
-CC=c99
-CFLAGS=-O2
-LDFLAGS=-s
+include build.mk
 
 ifeq ($(ZLIB_LIBS),)
 ZLIB_LIBS:=$(shell $(CROSS_COMPILE)pkg-config zlib --libs)
