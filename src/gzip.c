@@ -278,73 +278,115 @@ error:
 	return ret;
 }
 
+static int inflate_push(z_stream *strm, char *buf, size_t len)
+{
+	strm->next_in = buf;
+	strm->avail_in = len;
+	if(strm->avail_in != len) { errno = ERANGE; return -1; }
+	return 0;
+}
+
+static ssize_t inflate_read(z_stream *strm, char *buf, size_t len)
+{
+	int err;
+	ssize_t ret = 0;
+
+	while(len) {
+		strm->next_out = buf + ret;
+		strm->avail_out = len;
+		if(strm->avail_out != len) strm->avail_out = INT_MAX;
+		err = inflate(strm, Z_NO_FLUSH);
+		ret += len - strm->avail_out;
+		len -= len - strm->avail_out;
+		if(err == Z_STREAM_END) {
+			return ret == 0 ? -1 : ret;
+		}
+		if(err != Z_OK) {
+			if(!strm->msg)
+				strm->msg = (char*)zError(err);
+			return -2;
+		}
+	}
+
+	return ret;
+}
+
+static int deflate_push(z_stream *strm, char *buf, size_t len)
+{
+	strm->next_in = buf;
+	strm->avail_in = len;
+	if(strm->avail_in != len) { errno = ERANGE; return -1; }
+	return 0;
+}
+
+static ssize_t deflate_read(z_stream *strm, char *buf, size_t len, int flush)
+{
+	ssize_t ret = 0;
+	while(len) {
+		strm->next_out = buf + ret;
+		strm->avail_out = len;
+		if(strm->avail_out != len) strm->avail_out = INT_MAX;
+		deflate(strm, flush);
+		if((len - strm->avail_out) == 0)
+			if(ret == 0 && flush == Z_FINISH)
+				return -1;
+			else
+				return ret;
+		ret += len - strm->avail_out;
+		len -= len - strm->avail_out;
+	}
+	return ret;
+}
+
+static int strm_push(z_stream *strm, char *buf, size_t len)
+{
+	if(opt_compress)
+		return deflate_push(strm, buf, len);
+	else
+		return inflate_push(strm, buf, len);
+}
+
+static ssize_t strm_read(z_stream *strm, char *buf, size_t len, int flush)
+{
+	if(opt_compress)
+		return deflate_read(strm, buf, len, flush);
+	else
+		return inflate_read(strm, buf, len);
+}
+
 static int out_to_fd(z_stream *strm, char *in_file, int in_fd,
                      char *out_file, int out_fd)
 {
 	int ret = 0;
 	char in[4096];
 	char out[4096];
+	ssize_t read_amt, write_amt;
+	int flush = Z_NO_FLUSH;
 
-	if(opt_compress) {
-		ssize_t read_amt, write_amt;
-		int flush = Z_NO_FLUSH;
+	do {
+		read_amt = read(in_fd, in, sizeof in);
+		if(read_amt < 0) {
+			report_error(errno, "%s", in_file);
+			return 1;
+		}
+		if(read_amt == 0) flush = Z_FINISH;
 
-		do {
-			read_amt = read(in_fd, in, sizeof in);
-			if(read_amt < 0) {
-				report_error(errno, "%s", in_file);
+		if(strm_push(strm, in, read_amt) < 0) {
+			report_error(errno, "%s", in_file);
+			return 1;
+		}
+
+		while((write_amt = strm_read(strm, out, sizeof out, flush))
+		      > 0) {
+			if(do_write(out_fd, out, write_amt) != 0)
 				return 1;
-			}
-			if(read_amt == 0)
-				flush = Z_FINISH;
-			strm->next_in = in;
-			strm->avail_in = read_amt;
-			do {
-				strm->avail_out = sizeof out;
-				strm->next_out = out;
-				deflate(strm, flush);
-				if(do_write(out_fd, out,
-				            sizeof out - strm->avail_out) != 0)
-					return 1;
-			} while(strm->avail_out == 0);
-		} while(flush != Z_FINISH);
-	} else {
-		ssize_t read_amt, write_amt;
-		int err;
-		do {
-			read_amt = read(in_fd, in, sizeof in);
-			if(read_amt < 0) {
-				report_error(0, "%s", in_file);
-				return 1;
-			}
-			if(read_amt == 0) {
-				report_error(0, "%s: bad input", in_file);
-				return 1;
-			}
-			strm->next_in = in;
-			strm->avail_in = read_amt;
-			do {
-				strm->avail_out = sizeof out;
-				strm->next_out = out;
-				err = inflate(strm, Z_NO_FLUSH);
-				if(err != Z_OK && err != Z_STREAM_END) {
-					if(strm->msg)
-						report_error(0, "%s: %s",
-						             in_file,
-						             strm->msg);
-					else
-						report_error(0, "%s: %s",
-						             in_file,
-						             zError(err));
-					return 1;
-				}
-				if(do_write(out_fd, out,
-				            sizeof out - strm->avail_out) != 0)
-					return 1;
-			} while(strm->avail_out == 0);
-		} while(err != Z_STREAM_END);
-	}
-	return ret;
+		}
+		if(write_amt < -1) {
+			report_error(0, "%s: %s", in_file, strm->msg);
+			return 1;
+		}
+	} while(write_amt != -1);
+	return 0;
 }
 
 static int out_stats(z_stream *strm, char *in_file, int in_fd)
@@ -354,6 +396,7 @@ static int out_stats(z_stream *strm, char *in_file, int in_fd)
 	int ret = 0;
 	char in[4096];
 	char out[4096];
+	ssize_t read_amt, write_amt;
 
 	uintmax_t compr_total = 0;
 	uintmax_t uncompr_total = 0;
@@ -371,7 +414,7 @@ static int out_stats(z_stream *strm, char *in_file, int in_fd)
 	compr_total += strm->total_in;
 
 	do {
-		ssize_t read_amt = read(in_fd, in, sizeof in);
+		read_amt = read(in_fd, in, sizeof in);
 		if(read_amt < 0) {
 			report_error(0, "%s", in_file);
 			ret = 1;
@@ -383,12 +426,13 @@ static int out_stats(z_stream *strm, char *in_file, int in_fd)
 			goto cleanup;
 		}
 		compr_total += read_amt;
-		strm->next_in = in;
-		strm->avail_in = read_amt;
-		do {
-			strm->avail_out = sizeof out;
-			strm->next_out = out;
-			err = inflate(strm, Z_NO_FLUSH);
+		if(inflate_push(strm, in, read_amt) < 0) {
+			report_error(errno, "%s", in_file);
+			ret = 1;
+			goto cleanup;
+		}
+		while((write_amt = inflate_read(strm, out, sizeof out)) > 0) {
+			uncompr_total += write_amt;
 			if(err != Z_OK && err != Z_STREAM_END) {
 				if(strm->msg)
 					report_error(0, "%s: %s", in_file,
@@ -400,8 +444,13 @@ static int out_stats(z_stream *strm, char *in_file, int in_fd)
 				goto cleanup;
 			}
 			uncompr_total += sizeof out - strm->avail_out;
-		} while(strm->avail_out == 0);
-	} while(err != Z_STREAM_END);
+		}
+		if(write_amt < -1) {
+			report_error(0, "%s: %s", in_file, strm->msg);
+			ret = 1;
+			goto cleanup;
+		}
+	} while(write_amt != -1);
 
 	if(first_time) {
 		if(opt_verbosity == 2) {
