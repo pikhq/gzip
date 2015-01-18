@@ -686,6 +686,32 @@ static int handle_path(char *path)
 	 * compress symlinks
 	 */
 	if((in_fd = open(path, O_RDONLY | !opt_force ? O_NOFOLLOW : 0)) < 0) {
+		/* O_NOFOLLOW returns ELOOP for symlinks, but that's
+		 * a confusing message to give.
+		 */
+		if(!opt_force && errno == ELOOP) {
+			struct stat stat_buf2;
+			if(lstat(path, &stat_buf2)) {
+				report_error(errno, "%s", path);
+				return 1;
+			} else if(S_ISLNK(stat_buf2.st_mode)) {
+				report_error(0, "%s: is a link; not processing",
+						path);
+				return 1;
+			} else {
+				/* This condition should only occur with a race
+				 * occuring. open was not able to open the file
+				 * because of either recursive symlinks or the
+				 * path it pointed to was a symlink. However,
+				 * when we got its info with lstat we didn't
+				 * fail, but the path was not a symlink.
+				 *
+				 * Just report the ELOOP error anyways, even
+				 * though it has ceased to be true.
+				 */
+				report_error(ELOOP, "%s", path);
+			}
+		}
 		report_error(errno, "%s", path);
 		return 1;
 	}
