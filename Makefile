@@ -12,6 +12,9 @@ ZLIB_CFLAGS:=
 endif
 endif
 
+SRCS=$(wildcard src/*.c)
+OBJS=$(SRCS:.c=.o)
+
 PORT=$(wildcard src/port/*.inc)
 PORT_SRCS=$(PORT:.inc=.c)
 PORT_OBJS=$(PORT:.inc=.o)
@@ -22,7 +25,7 @@ CPPFLAGS+=-Iinclude -D_XOPEN_SOURCE=700 -D_FILE_OFFSET_BITS=64
 
 all: src/gzip
 
-src/gzip: src/gzip.o $(PORT_OBJS)
+src/gzip: $(OBJS) $(PORT_OBJS)
 src/gzip.o: $(wildcard include/*.h)
 
 src/port/%.c: src/port/%.inc src/port/%.fallback tests/%.test.c
@@ -31,4 +34,4 @@ src/port/%.c: src/port/%.inc src/port/%.fallback tests/%.test.c
 		|| cp src/port/$*.fallback src/port/$*.c
 
 clean:
-	-rm -f src/gzip src/gzip.o $(PORT_SRCS) $(PORT_OBJS)
+	-rm -f src/gzip $(OBJS) $(PORT_SRCS) $(PORT_OBJS)

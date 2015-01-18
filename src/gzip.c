@@ -19,6 +19,8 @@
 
 #include <zlib.h>
 
+#include "util.h"
+
 #include "asprintf.h"
 #include "getopt_long.h"
 
@@ -205,23 +207,7 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 		strm->avail_out = 1;
 
 		if(buf[buf_alloc - 1] != '\0') {
-			char *new_buf;
-			if(buf_alloc == SIZE_MAX) {
-				errno = ENOMEM;
-				report_error(errno, "%s", in_file);
-				ret = 1;
-				goto error;
-			}
-
-			/* Check for overflow by checking the addition to see
-			 * if it wraps around.
-			 */
-			if((size_t)(buf_alloc + buf_alloc/2) < buf_alloc) {
-				buf_alloc = SIZE_MAX;
-			} else {
-				buf_alloc = buf_alloc + buf_alloc/2;
-			}
-			new_buf = realloc(buf, buf_alloc);
+			char *new_buf = grow_buf(buf, &buf_alloc);
 			if(!new_buf) {
 				report_error(errno, "%s", in_file);
 				ret = 1;
@@ -480,26 +466,8 @@ static int out_stats(z_stream *strm, char *in_file, int in_fd)
 			goto cleanup;
 		}
 		do {
-			if(buf_alloc == SIZE_MAX) {
-				errno = ENOMEM;
-				report_error(errno, "%s", in_file);
-				free(buf);
-				ret = 1;
-				goto cleanup;
-			}
-			if(buf_alloc + buf_alloc/2 < buf_alloc) {
-				buf_alloc = SIZE_MAX;
-			} else {
-				buf_alloc += buf_alloc/2;
-			}
-
-			char *new_buf = realloc(buf, buf_alloc);
-			if(!new_buf) {
-				report_error(errno, "%s", in_file);
-				ret = 1;
-				free(buf);
-				goto cleanup;
-			}
+			char *new_buf = grow_buf(buf, &buf_alloc);
+			if(!new_buf) break;
 			buf = new_buf;
 			errno = 0;
 		} while(!strftime(buf, buf_alloc, "%x %X ", tm) && errno == 0);
