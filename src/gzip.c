@@ -263,8 +263,10 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 		ret = 1;
 		goto error;
 	}
-	char *transbuf;
-	if(asiconv(cd, buf, strlen(buf), &transbuf, NULL) == (size_t)-1) {
+	char *transbuf = 0;
+	size_t transbuf_alloc = 0;
+	if(asiconv(cd, buf, strlen(buf), &transbuf, &transbuf_alloc)
+			== (size_t)-1) {
 		if(errno != EILSEQ && errno != EINVAL) {
 			free(transbuf);
 			ret = 1;
@@ -277,7 +279,7 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 			ret = 1;
 			goto error;
 		}
-		if(asiconv(cd, buf, strlen(buf), &transbuf, NULL)
+		if(asiconv(cd, buf, strlen(buf), &transbuf, &transbuf_alloc)
 				== (size_t)-1) {
 			free(transbuf);
 			ret = 1;
