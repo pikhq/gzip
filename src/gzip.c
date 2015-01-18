@@ -260,6 +260,10 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 
 	iconv_t cd;
 
+	/* The input file name is in Latin-1 according to the spec, but in
+	 * practice it's the locale charset of whoever compressed the file.
+	 * Try UTF-8 first (if it's valid UTF-8 it was certainly UTF-8)
+	 */
 	cd = iconv_open(nl_langinfo(CODESET), "UTF-8");
 	if(cd = (iconv_t)-1) {
 		ret = 1;
@@ -275,6 +279,11 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 			goto error;
 		}
 		iconv_close(cd);
+		/* Fall back to Latin-1 as the spec intends (this might give
+		 * mojibake if the file used some other legacy charset, but
+		 * there's no helping that without applying some charset
+		 * heuristics here.
+		 */
 		cd = iconv_open(nl_langinfo(CODESET), "ISO-8859-1");
 		if(cd = (iconv_t)-1) {
 			free(transbuf);
@@ -769,6 +778,13 @@ static int handle_path(char *path)
 			free(buf1);
 			iconv_t cd;
 			char *buf3 = NULL;
+			/* The spec says the header charset is Latin-1, but in
+			 * practice it's in whatever charset was in use by the
+			 * compressing app.
+			 * These are both clearly insane (though the spec much
+			 * less so), so we output in UTF-8 unconditionally
+			 * instead.
+			 */
 			cd = iconv_open("UTF-8", nl_langinfo(CODESET));
 			if(cd == (iconv_t)-1) {
 				report_error(errno, 0);
