@@ -265,7 +265,7 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 	}
 	char *transbuf = 0;
 	size_t transbuf_alloc = 0;
-	if(asiconv(cd, buf, strlen(buf), &transbuf, &transbuf_alloc)
+	if(asiconv(cd, buf, strlen(buf)+1, &transbuf, &transbuf_alloc)
 			== (size_t)-1) {
 		if(errno != EILSEQ && errno != EINVAL) {
 			free(transbuf);
@@ -279,7 +279,7 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 			ret = 1;
 			goto error;
 		}
-		if(asiconv(cd, buf, strlen(buf), &transbuf, &transbuf_alloc)
+		if(asiconv(cd, buf, strlen(buf)+1, &transbuf, &transbuf_alloc)
 				== (size_t)-1) {
 			free(transbuf);
 			ret = 1;
@@ -774,7 +774,7 @@ static int handle_path(char *path)
 				ret = 1;
 				goto cleanup_paths;
 			}
-			if(asiconv(cd, buf2, strlen(buf2), &buf3, 0)
+			if(asiconv(cd, buf2, strlen(buf2)+1, &buf3, 0)
 					== (size_t)-1) {
 				report_error(errno, 0);
 				free(buf2);
