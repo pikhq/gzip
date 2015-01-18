@@ -16,6 +16,8 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <inttypes.h>
+#include <langinfo.h>
+#include <locale.h>
 
 #include <zlib.h>
 
@@ -254,7 +256,37 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 		goto error;
 	}
 
-	head->name = buf;
+	iconv_t cd;
+
+	cd = iconv_open(nl_langinfo(CODESET), "UTF-8");
+	if(cd = (iconv_t)-1) {
+		ret = 1;
+		goto error;
+	}
+	char *transbuf;
+	if(asiconv(cd, buf, strlen(buf), &transbuf, NULL) == (size_t)-1) {
+		if(errno != EILSEQ && errno != EINVAL) {
+			free(transbuf);
+			ret = 1;
+			goto error;
+		}
+		iconv_close(cd);
+		cd = iconv_open(nl_langinfo(CODESET), "windows-1252");
+		if(cd = (iconv_t)-1) {
+			free(transbuf);
+			ret = 1;
+			goto error;
+		}
+		if(asiconv(cd, buf, strlen(buf), &transbuf, NULL)
+				== (size_t)-1) {
+			free(transbuf);
+			ret = 1;
+			goto error;
+		}
+	}
+
+	head->name = transbuf;
+	free(buf);
 
 	return 0;
 error:
@@ -731,7 +763,25 @@ static int handle_path(char *path)
 				goto cleanup_strm;
 			}
 			free(buf1);
-			header.name = buf2;
+			iconv_t cd;
+			char *buf3 = NULL;
+			cd = iconv_open("UTF-8", nl_langinfo(CODESET));
+			if(cd == (iconv_t)-1) {
+				report_error(errno, 0);
+				free(buf2);
+				ret = 1;
+				goto cleanup_paths;
+			}
+			if(asiconv(cd, buf2, strlen(buf2), &buf3, 0)
+					== (size_t)-1) {
+				report_error(errno, 0);
+				free(buf2);
+				free(buf3);
+				ret = 1;
+				goto cleanup_paths;
+			}
+			free(buf2);
+			header.name = buf3;
 
 			header.time = stat_buf.st_mtime;
 		}
@@ -755,6 +805,7 @@ static int handle_path(char *path)
 		}
 	}
 
+cleanup_paths:
 	free(header.name);
 	free(out_path);
 cleanup_strm:
@@ -772,6 +823,9 @@ int main(int argc, char **argv)
 	char **v;
 
 	program_name = argv[0];
+
+	setlocale(LC_CTYPE, "");
+	setlocale(LC_MESSAGES, "");
 
 	while((c = getopt_long(argc, argv, option_str, options, NULL)) != -1) {
 		switch(c) {
