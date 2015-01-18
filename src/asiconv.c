@@ -4,9 +4,10 @@
 
 #include "util.h"
 
-size_t asiconv(iconv_t cd, char *inbuf, size_t inlen, char **outbuf, size_t *outlen)
+size_t asiconv(iconv_t cd, const char * restrict inbuf, size_t inlen,
+	char *restrict*restrict outbuf, size_t *outlen)
 {
-	char *inptr = inbuf;
+	const char *inptr = inbuf;
 	size_t inrem = inlen;
 	char *outptr;
 	size_t out_i = 0;
@@ -28,7 +29,7 @@ size_t asiconv(iconv_t cd, char *inbuf, size_t inlen, char **outbuf, size_t *out
 
 	do {
 		size_t oldrem = outrem;
-		nconv = iconv(cd, &inptr, &inrem, &outptr, &outrem);
+		nconv = iconv(cd, (char**)&inptr, &inrem, &outptr, &outrem);
 		out_i += outrem - oldrem;
 
 		if(nconv == (size_t)-1 && errno == E2BIG) {
