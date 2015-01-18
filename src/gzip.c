@@ -260,7 +260,7 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 
 	iconv_t cd;
 
-	/* The input file name is in Latin-1 according to the spec, but in
+	/* the input file name is in Latin-1 according to the spec, but in
 	 * practice it's the locale charset of whoever compressed the file.
 	 * Try UTF-8 first (if it's valid UTF-8 it was certainly UTF-8)
 	 */
@@ -682,7 +682,10 @@ static int handle_path(char *path)
 		.os = 3, /* Unix */
 	};
 
-	if((in_fd = open(path, O_RDONLY)) < 0) {
+	/* Use O_NOFOLLOW to implement the behavior that gzip doesn't
+	 * compress symlinks
+	 */
+	if((in_fd = open(path, O_RDONLY | !opt_force ? O_NOFOLLOW : 0)) < 0) {
 		report_error(errno, "%s", path);
 		return 1;
 	}
