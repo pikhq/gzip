@@ -281,7 +281,7 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 		/* Fall back to Latin-1 as the spec intends (this might give
 		 * mojibake if the file used some other legacy charset, but
 		 * there's no helping that without applying some charset
-		 * heuristics here.
+		 * heuristics here.)
 		 */
 		cd = iconv_open(nl_langinfo(CODESET), "ISO-8859-1");
 		if(cd = (iconv_t)-1) {
