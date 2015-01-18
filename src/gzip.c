@@ -274,9 +274,8 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 	if(asiconv(cd, buf, strlen(buf)+1, &transbuf, &transbuf_alloc)
 			== (size_t)-1) {
 		if(errno != EILSEQ && errno != EINVAL) {
-			free(transbuf);
 			ret = 1;
-			goto error;
+			goto iconv_error;
 		}
 		iconv_close(cd);
 		/* Fall back to Latin-1 as the spec intends (this might give
@@ -286,22 +285,25 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 		 */
 		cd = iconv_open(nl_langinfo(CODESET), "ISO-8859-1");
 		if(cd = (iconv_t)-1) {
-			free(transbuf);
 			ret = 1;
-			goto error;
+			goto iconv_error;
 		}
 		if(asiconv(cd, buf, strlen(buf)+1, &transbuf, &transbuf_alloc)
 				== (size_t)-1) {
-			free(transbuf);
 			ret = 1;
-			goto error;
+			goto iconv_error;
 		}
+
 	}
 
 	head->name = transbuf;
+	iconv_close(cd);
 	free(buf);
 
 	return 0;
+iconv_error:
+	iconv_close(cd);
+	free(transbuf);
 error:
 	free(buf);
 	head->name = 0;
@@ -795,11 +797,13 @@ static int handle_path(char *path)
 			if(asiconv(cd, buf2, strlen(buf2)+1, &buf3, 0)
 					== (size_t)-1) {
 				report_error(errno, 0);
+				iconv_close(cd);
 				free(buf2);
 				free(buf3);
 				ret = 1;
 				goto cleanup_paths;
 			}
+			iconv_close(cd);
 			free(buf2);
 			header.name = buf3;
 
