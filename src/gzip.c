@@ -271,7 +271,7 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 			goto error;
 		}
 		iconv_close(cd);
-		cd = iconv_open(nl_langinfo(CODESET), "windows-1252");
+		cd = iconv_open(nl_langinfo(CODESET), "ISO-8859-1");
 		if(cd = (iconv_t)-1) {
 			free(transbuf);
 			ret = 1;
