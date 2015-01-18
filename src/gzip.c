@@ -419,16 +419,6 @@ static int out_stats(z_stream *strm, char *in_file, int in_fd)
 		}
 		while((write_amt = inflate_read(strm, out, sizeof out)) > 0) {
 			uncompr_total += write_amt;
-			if(err != Z_OK && err != Z_STREAM_END) {
-				if(strm->msg)
-					report_error(0, "%s: %s", in_file,
-					             strm->msg);
-				else
-					report_error(0, "%s: %s", in_file,
-					             zError(err));
-				ret = 1;
-				goto cleanup;
-			}
 			uncompr_total += sizeof out - strm->avail_out;
 		}
 		if(write_amt < -1) {
