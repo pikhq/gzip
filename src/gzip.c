@@ -183,16 +183,20 @@ static ssize_t inflate_read(z_stream *strm, char *buf, size_t len, int flush)
 	int err;
 	ssize_t ret = 0;
 
-	if(flush == Z_FINISH)
-		flush = Z_NO_FLUSH;
-
-	while(len) {
+	do {
 		strm->next_out = buf + ret;
 		strm->avail_out = len;
 		if(strm->avail_out != len) strm->avail_out = INT_MAX;
 		err = inflate(strm, flush);
 		ret += len - strm->avail_out;
 		len -= len - strm->avail_out;
+		if(err == Z_BUF_ERROR && flush == Z_FINISH) {
+			strm->msg = "unexpected end of file";
+			return -2;
+		}
+		if(err == Z_BUF_ERROR) {
+			return ret;
+		}
 		if(err == Z_STREAM_END) {
 			return ret == 0 ? -1 : ret;
 		}
@@ -201,7 +205,7 @@ static ssize_t inflate_read(z_stream *strm, char *buf, size_t len, int flush)
 				strm->msg = (char*)zError(err);
 			return -2;
 		}
-	}
+	} while(len);
 
 	return ret;
 }
@@ -256,19 +260,17 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 
 	while(head->done == 0) {
 		size_t read_amt;
+		int flush = Z_BLOCK;
 
 		read_amt = read(in_fd, &in, 1);
 		if(read_amt < 0) {
 			report_error(errno, "%s", in_file);
 			return 1;
 		}
-		if(read_amt == 0) {
-			report_error(0, "%s: bad input", in_file);
-			return 1;
-		}
+		if(read_amt == 0) flush = Z_FINISH;
 
 		strm_push(strm, &in, 1);
-		if(strm_read(strm, &out, 1, Z_BLOCK) < 0) {
+		if(strm_read(strm, &out, 1, flush) < 0) {
 			report_error(0, "%s: %s", in_file, strm->msg);
 			return 1;
 		}
@@ -336,17 +338,15 @@ static int out_stats(z_stream *strm, char *in_file, int in_fd)
 	compr_total += strm->total_in;
 
 	do {
+		int flush = Z_NO_FLUSH;
+
 		read_amt = read(in_fd, in, sizeof in);
 		if(read_amt < 0) {
 			report_error(0, "%s", in_file);
 			ret = 1;
 			goto cleanup;
 		}
-		if(read_amt == 0) {
-			report_error(0, "%s: bad input", in_file);
-			ret = 1;
-			goto cleanup;
-		}
+		if(read_amt == 0) flush = Z_FINISH;
 		compr_total += read_amt;
 		if(strm_push(strm, in, read_amt) < 0) {
 			report_error(errno, "%s", in_file);
@@ -354,7 +354,7 @@ static int out_stats(z_stream *strm, char *in_file, int in_fd)
 			goto cleanup;
 		}
 		while((write_amt = strm_read(strm, out, sizeof out,
-						Z_NO_FLUSH)) > 0) {
+						flush)) > 0) {
 			uncompr_total += write_amt;
 			uncompr_total += sizeof out - strm->avail_out;
 		}
