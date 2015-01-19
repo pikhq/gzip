@@ -178,67 +178,19 @@ static int remove_suffix(char *str, char *suffix, bool case_insensitive)
 	return 0;
 }
 
-static int read_header(z_stream *strm, gz_header *head, char *in_file,
-                       int in_fd)
-{
-	char in = 0;
-	char out = 0;
-	int res;
-	int ret = 0;
-
-	res = inflateGetHeader(strm, head);
-
-	head->name = 0;
-	head->name_max = 0;
-
-	while(res == Z_OK && head->done == 0) {
-		size_t read_amt;
-
-		strm->next_in = &in;
-		strm->avail_in = 1;
-		strm->next_out = &out;
-		strm->avail_out = 1;
-
-		read_amt = read(in_fd, &in, 1);
-		if(read_amt < 0) {
-			report_error(errno, "%s", in_file);
-			return 1;
-		}
-		if(read_amt == 0) {
-			report_error(0, "%s: bad input", in_file);
-			return 1;
-		}
-
-		res = inflate(strm, Z_BLOCK);
-	}
-
-	if(res != Z_OK) {
-		if(strm->msg)
-			report_error(0, "%s: %s", in_file, strm->msg);
-		else
-			report_error(0, "%s: %s", in_file, zError(res));
-		return 1;
-	}
-}
-
-static int inflate_push(z_stream *strm, char *buf, size_t len)
-{
-	strm->next_in = buf;
-	strm->avail_in = len;
-	if(strm->avail_in != len) { errno = ERANGE; return -1; }
-	return 0;
-}
-
-static ssize_t inflate_read(z_stream *strm, char *buf, size_t len)
+static ssize_t inflate_read(z_stream *strm, char *buf, size_t len, int flush)
 {
 	int err;
 	ssize_t ret = 0;
+
+	if(flush == Z_FINISH)
+		flush = Z_NO_FLUSH;
 
 	while(len) {
 		strm->next_out = buf + ret;
 		strm->avail_out = len;
 		if(strm->avail_out != len) strm->avail_out = INT_MAX;
-		err = inflate(strm, Z_NO_FLUSH);
+		err = inflate(strm, flush);
 		ret += len - strm->avail_out;
 		len -= len - strm->avail_out;
 		if(err == Z_STREAM_END) {
@@ -252,14 +204,6 @@ static ssize_t inflate_read(z_stream *strm, char *buf, size_t len)
 	}
 
 	return ret;
-}
-
-static int deflate_push(z_stream *strm, char *buf, size_t len)
-{
-	strm->next_in = buf;
-	strm->avail_in = len;
-	if(strm->avail_in != len) { errno = ERANGE; return -1; }
-	return 0;
 }
 
 static ssize_t deflate_read(z_stream *strm, char *buf, size_t len, int flush)
@@ -283,10 +227,10 @@ static ssize_t deflate_read(z_stream *strm, char *buf, size_t len, int flush)
 
 static int strm_push(z_stream *strm, char *buf, size_t len)
 {
-	if(opt_compress)
-		return deflate_push(strm, buf, len);
-	else
-		return inflate_push(strm, buf, len);
+	strm->next_in = buf;
+	strm->avail_in = len;
+	if(strm->avail_in != len) { errno = ERANGE; return -1; }
+	return 0;
 }
 
 static ssize_t strm_read(z_stream *strm, char *buf, size_t len, int flush)
@@ -294,7 +238,47 @@ static ssize_t strm_read(z_stream *strm, char *buf, size_t len, int flush)
 	if(opt_compress)
 		return deflate_read(strm, buf, len, flush);
 	else
-		return inflate_read(strm, buf, len);
+		return inflate_read(strm, buf, len, flush);
+}
+
+static int read_header(z_stream *strm, gz_header *head, char *in_file,
+                       int in_fd)
+{
+	char in = 0;
+	char out = 0;
+	int res;
+	int ret = 0;
+
+	res = inflateGetHeader(strm, head);
+
+	head->name = 0;
+	head->name_max = 0;
+
+	while(head->done == 0) {
+		size_t read_amt;
+
+		strm->next_in = &in;
+		strm->avail_in = 1;
+		strm->next_out = &out;
+		strm->avail_out = 1;
+
+		read_amt = read(in_fd, &in, 1);
+		if(read_amt < 0) {
+			report_error(errno, "%s", in_file);
+			return 1;
+		}
+		if(read_amt == 0) {
+			report_error(0, "%s: bad input", in_file);
+			return 1;
+		}
+
+		strm_push(strm, &in, 1);
+		if(strm_read(strm, &out, 1, Z_BLOCK) < 0) {
+			report_error(0, "%s: %s", in_file, strm->msg);
+			return 1;
+		}
+	}
+	return 0;
 }
 
 static int out_to_fd(z_stream *strm, char *in_file, int in_fd,
@@ -369,12 +353,13 @@ static int out_stats(z_stream *strm, char *in_file, int in_fd)
 			goto cleanup;
 		}
 		compr_total += read_amt;
-		if(inflate_push(strm, in, read_amt) < 0) {
+		if(strm_push(strm, in, read_amt) < 0) {
 			report_error(errno, "%s", in_file);
 			ret = 1;
 			goto cleanup;
 		}
-		while((write_amt = inflate_read(strm, out, sizeof out)) > 0) {
+		while((write_amt = strm_read(strm, out, sizeof out,
+						Z_NO_FLUSH)) > 0) {
 			uncompr_total += write_amt;
 			uncompr_total += sizeof out - strm->avail_out;
 		}
