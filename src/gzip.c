@@ -257,11 +257,6 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 	while(head->done == 0) {
 		size_t read_amt;
 
-		strm->next_in = &in;
-		strm->avail_in = 1;
-		strm->next_out = &out;
-		strm->avail_out = 1;
-
 		read_amt = read(in_fd, &in, 1);
 		if(read_amt < 0) {
 			report_error(errno, "%s", in_file);
