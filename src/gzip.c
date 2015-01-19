@@ -16,7 +16,6 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <inttypes.h>
-#include <langinfo.h>
 #include <locale.h>
 
 #include <zlib.h>
