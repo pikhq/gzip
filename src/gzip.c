@@ -97,10 +97,10 @@ static void write_help()
 		"  -h, --help           output this message\n"
 		"  -l, --list           list compressed file contents\n"
 		"  -n, --no-name        do not save or restore the original "
-			"file name and time\n"
-		"                       stamp\n"
+			"file time stamp\n"
 		"  -N, --name           save or restore the original file "
-			"name and time stamp\n"
+			"time stamp (does not\n"
+		"                       save or restore the name)\n"
 		"                       (default when compressing)\n"
 		"  -q, --quiet          suppress all warnings\n"
 		"  -r, --recursive      operate recursively on directories\n"
@@ -187,20 +187,10 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 	int res;
 	int ret = 0;
 
-	char *buf = 0;
-	size_t buf_alloc = 64;
-
 	res = inflateGetHeader(strm, head);
 
-	buf = malloc(buf_alloc);
-	if(!buf) {
-		report_error(errno, "%s", in_file);
-		ret = 1;
-		goto error;
-	}
-	head->name = buf;
-	head->name_max = buf_alloc;
-	buf[buf_alloc - 1] = '\0';
+	head->name = 0;
+	head->name_max = 0;
 
 	while(res == Z_OK && head->done == 0) {
 		size_t read_amt;
@@ -210,40 +200,14 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 		strm->next_out = &out;
 		strm->avail_out = 1;
 
-		if(buf[buf_alloc - 1] != '\0') {
-			char *new_buf = grow_buf(buf, &buf_alloc);
-			if(!new_buf) {
-				report_error(errno, "%s", in_file);
-				ret = 1;
-				goto error;
-			}
-			new_buf[buf_alloc-1] = '\0';
-			buf = new_buf;
-			/* zlib can only handle a UINT_MAX-length buffer, but
-			 * we have no such limitation. So, we make sure that
-			 * zlib only sees a buffer of that long or smaller,
-			 * while keeping track of the actual size of the whole
-			 * thing.
-			 */
-			if(buf_alloc > UINT_MAX) {
-				head->name = buf + buf_alloc - UINT_MAX;
-				head->name_max = UINT_MAX;
-			} else {
-				head->name = buf;
-				head->name_max = buf_alloc;
-			}
-		}
-
 		read_amt = read(in_fd, &in, 1);
 		if(read_amt < 0) {
 			report_error(errno, "%s", in_file);
-			ret = 1;
-			goto error;
+			return 1;
 		}
 		if(read_amt == 0) {
 			report_error(0, "%s: bad input", in_file);
-			ret = 1;
-			goto error;
+			return 1;
 		}
 
 		res = inflate(strm, Z_BLOCK);
@@ -254,61 +218,8 @@ static int read_header(z_stream *strm, gz_header *head, char *in_file,
 			report_error(0, "%s: %s", in_file, strm->msg);
 		else
 			report_error(0, "%s: %s", in_file, zError(res));
-		ret = 1;
-		goto error;
+		return 1;
 	}
-
-	iconv_t cd;
-
-	/* the input file name is in Latin-1 according to the spec, but in
-	 * practice it's the locale charset of whoever compressed the file.
-	 * Try UTF-8 first (if it's valid UTF-8 it was certainly UTF-8)
-	 */
-	cd = iconv_open(nl_langinfo(CODESET), "UTF-8");
-	if(cd = (iconv_t)-1) {
-		ret = 1;
-		goto error;
-	}
-	char *transbuf = 0;
-	size_t transbuf_alloc = 0;
-	if(asiconv(cd, buf, strlen(buf)+1, &transbuf, &transbuf_alloc)
-			== (size_t)-1) {
-		if(errno != EILSEQ && errno != EINVAL) {
-			ret = 1;
-			goto iconv_error;
-		}
-		iconv_close(cd);
-		/* Fall back to Latin-1 as the spec intends (this might give
-		 * mojibake if the file used some other legacy charset, but
-		 * there's no helping that without applying some charset
-		 * heuristics here.)
-		 */
-		cd = iconv_open(nl_langinfo(CODESET), "ISO-8859-1");
-		if(cd = (iconv_t)-1) {
-			ret = 1;
-			goto iconv_error;
-		}
-		if(asiconv(cd, buf, strlen(buf)+1, &transbuf, &transbuf_alloc)
-				== (size_t)-1) {
-			ret = 1;
-			goto iconv_error;
-		}
-
-	}
-
-	head->name = transbuf;
-	iconv_close(cd);
-	free(buf);
-
-	return 0;
-iconv_error:
-	iconv_close(cd);
-	free(transbuf);
-error:
-	free(buf);
-	head->name = 0;
-	head->name_max = 0;
-	return ret;
 }
 
 static int inflate_push(z_stream *strm, char *buf, size_t len)
@@ -752,10 +663,7 @@ static int handle_path(char *path)
 				ret = res;
 				goto cleanup_strm;
 			}
-			if(header.name) {
-				out_path = header.name;
-				header.name = 0;
-			}
+			header.name = 0;
 		}
 		if(!out_path) {
 			out_path = strdup(path);
@@ -790,52 +698,6 @@ static int handle_path(char *path)
 		int len;
 
 		if(opt_store_name) {
-			char *buf1;
-			char *buf2 = NULL;
-
-			buf1 = strdup(path);
-			if(!buf1) {
-				report_error(errno, 0);
-				ret = 1;
-				goto cleanup_strm;
-			}
-			buf2 = strdup(basename(buf1));
-			if(!buf2) {
-				report_error(errno, 0);
-				free(buf1);
-				ret = 1;
-				goto cleanup_strm;
-			}
-			free(buf1);
-			iconv_t cd;
-			char *buf3 = NULL;
-			/* The spec says the header charset is Latin-1, but in
-			 * practice it's in whatever charset was in use by the
-			 * compressing app.
-			 * These are both clearly insane (though the spec much
-			 * less so), so we output in UTF-8 unconditionally
-			 * instead.
-			 */
-			cd = iconv_open("UTF-8", nl_langinfo(CODESET));
-			if(cd == (iconv_t)-1) {
-				report_error(errno, 0);
-				free(buf2);
-				ret = 1;
-				goto cleanup_paths;
-			}
-			if(asiconv(cd, buf2, strlen(buf2)+1, &buf3, 0)
-					== (size_t)-1) {
-				report_error(errno, 0);
-				iconv_close(cd);
-				free(buf2);
-				free(buf3);
-				ret = 1;
-				goto cleanup_paths;
-			}
-			iconv_close(cd);
-			free(buf2);
-			header.name = buf3;
-
 			header.time = stat_buf.st_mtime;
 		}
 
