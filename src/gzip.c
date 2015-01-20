@@ -198,6 +198,10 @@ static ssize_t inflate_read(z_stream *strm, char *buf, size_t len, int flush)
 			return ret;
 		}
 		if(err == Z_STREAM_END) {
+			if(strm->avail_in) {
+				inflateReset(strm);
+				continue;
+			}
 			return ret == 0 ? -1 : ret;
 		}
 		if(err != Z_OK) {
@@ -284,7 +288,7 @@ static int out_to_fd(z_stream *strm, char *in_file, int in_fd,
 	int ret = 0;
 	char in[4096];
 	char out[4096];
-	ssize_t read_amt, write_amt;
+	ssize_t read_amt, write_amt = 0;
 	int flush = Z_NO_FLUSH;
 
 	do {
@@ -300,6 +304,13 @@ static int out_to_fd(z_stream *strm, char *in_file, int in_fd,
 			return 1;
 		}
 
+		/* If we still have input and the last bit of input happened to
+		 * be a complete gzip file we need to tell inflate to keep
+		 * processing.
+		 */
+		if(write_amt == -1 && flush != Z_FINISH && !opt_compress) {
+			inflateReset(strm);
+		}
 		while((write_amt = strm_read(strm, out, sizeof out, flush))
 		      > 0) {
 			if(do_write(out_fd, out, write_amt) != 0)
@@ -309,7 +320,7 @@ static int out_to_fd(z_stream *strm, char *in_file, int in_fd,
 			report_error(0, "%s: %s", in_file, strm->msg);
 			return 1;
 		}
-	} while(write_amt != -1);
+	} while(flush != Z_FINISH);
 	return 0;
 }
 
@@ -320,7 +331,8 @@ static int out_stats(z_stream *strm, char *in_file, int in_fd)
 	int ret = 0;
 	char in[4096];
 	char out[4096];
-	ssize_t read_amt, write_amt;
+	ssize_t read_amt, write_amt = 0;
+	int flush = Z_NO_FLUSH;
 
 	uintmax_t compr_total = 0;
 	uintmax_t uncompr_total = 0;
@@ -338,8 +350,6 @@ static int out_stats(z_stream *strm, char *in_file, int in_fd)
 	compr_total += strm->total_in;
 
 	do {
-		int flush = Z_NO_FLUSH;
-
 		read_amt = read(in_fd, in, sizeof in);
 		if(read_amt < 0) {
 			report_error(0, "%s", in_file);
@@ -353,6 +363,9 @@ static int out_stats(z_stream *strm, char *in_file, int in_fd)
 			ret = 1;
 			goto cleanup;
 		}
+		if(write_amt == -1 && flush != Z_FINISH) {
+			inflateReset(strm);
+		}
 		while((write_amt = strm_read(strm, out, sizeof out,
 						flush)) > 0) {
 			uncompr_total += write_amt;
@@ -363,7 +376,7 @@ static int out_stats(z_stream *strm, char *in_file, int in_fd)
 			ret = 1;
 			goto cleanup;
 		}
-	} while(write_amt != -1);
+	} while(flush != Z_FINISH);
 
 	if(first_time) {
 		if(opt_verbosity == 2) {
