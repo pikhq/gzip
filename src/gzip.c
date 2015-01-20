@@ -500,6 +500,10 @@ static int handle_stdin()
 	if(init_stream(&strm))
 		return 1;
 
+	if(opt_compress) {
+		deflateSetHeader(&strm, &header);
+	}
+
 	if(opt_list) {
 		ret = out_stats(&strm, "stdin", 0);
 		goto cleanup;
