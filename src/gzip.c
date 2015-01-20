@@ -178,6 +178,34 @@ static int remove_suffix(char *str, char *suffix, bool case_insensitive)
 	return 0;
 }
 
+static char *input_to_output_path(const char *path)
+{
+	char *ret = strdup(path);
+	if(!ret) {
+		return 0;
+	}
+
+	if(!remove_suffix(ret, opt_suffix, false)) {
+		char *suffixes[] = {
+			".gz",
+			"-gz",
+			".z",
+			"-z",
+			"_z",
+			".tgz",
+			0
+		};
+		for(char **suffix = suffixes; *suffix; suffix++)
+			if(remove_suffix(ret, *suffix, true))
+				return ret;
+		free(ret);
+		errno = EINVAL;
+		return 0;
+	}
+
+	return ret;
+}
+
 static ssize_t inflate_read(z_stream *strm, char *buf, size_t len, int flush)
 {
 	int err;
@@ -331,6 +359,7 @@ static int out_stats(z_stream *strm, char *in_file, int in_fd)
 	int ret = 0;
 	char in[4096];
 	char out[4096];
+	char *out_path;
 	ssize_t read_amt, write_amt = 0;
 	int flush = Z_NO_FLUSH;
 
@@ -344,10 +373,10 @@ static int out_stats(z_stream *strm, char *in_file, int in_fd)
 	for(uintmax_t n = UINTMAX_MAX; n > 9; n /= 10)
 		uintmax_width++;
 
-	err = read_header(strm, &header, in_file, in_fd);
-	if(err) return err;
+	out_path = input_to_output_path(in_file);
+	if(!out_path) goto cleanup;
 
-	compr_total += strm->total_in;
+	inflateGetHeader(strm, &header);
 
 	do {
 		read_amt = read(in_fd, in, sizeof in);
@@ -423,10 +452,10 @@ static int out_stats(z_stream *strm, char *in_file, int in_fd)
 	
 	printf("%*"PRIuMAX" %*"PRIuMAX"  %5.2f  %s\n", uintmax_width,
 	       compr_total, uintmax_width, uncompr_total,
-	       ((double)(compr_total) / uncompr_total) * 100.0, header.name);
+	       ((double)(compr_total) / uncompr_total) * 100.0, out_path);
 
 cleanup:
-	free(header.name);
+	free(out_path);
 
 	return ret;
 }
@@ -657,30 +686,7 @@ static int handle_path(char *path)
 			}
 			header.name = 0;
 		}
-		if(!out_path) {
-			out_path = strdup(path);
-			if(!out_path) {
-				report_error(errno, 0);
-				ret = 2;
-				goto cleanup_strm;
-			}
-
-			if(!remove_suffix(out_path, opt_suffix, false)) {
-				char *suffixes[] = {
-					".gz",
-					"-gz",
-					".z",
-					"-z",
-					"_z",
-					".tgz",
-					0
-				};
-				for(char **suffix = suffixes; *suffix; suffix++)
-					if(remove_suffix(out_path, *suffix,
-					                 true))
-						break;
-			}
-		}
+		out_path = input_to_output_path(path);
 		if(!out_path) {
 			report_error(errno, 0);
 			ret = 2;
