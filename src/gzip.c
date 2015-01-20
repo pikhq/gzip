@@ -277,39 +277,6 @@ static ssize_t strm_read(z_stream *strm, char *buf, size_t len, int flush)
 		return inflate_read(strm, buf, len, flush);
 }
 
-static int read_header(z_stream *strm, gz_header *head, char *in_file,
-                       int in_fd)
-{
-	char in = 0;
-	char out = 0;
-	int res;
-	int ret = 0;
-
-	res = inflateGetHeader(strm, head);
-
-	head->name = 0;
-	head->name_max = 0;
-
-	while(head->done == 0) {
-		size_t read_amt;
-		int flush = Z_BLOCK;
-
-		read_amt = read(in_fd, &in, 1);
-		if(read_amt < 0) {
-			report_error(errno, "%s", in_file);
-			return 1;
-		}
-		if(read_amt == 0) flush = Z_FINISH;
-
-		strm_push(strm, &in, 1);
-		if(strm_read(strm, &out, 1, flush) < 0) {
-			report_error(0, "%s: %s", in_file, strm->msg);
-			return 1;
-		}
-	}
-	return 0;
-}
-
 static int out_to_fd(z_stream *strm, char *in_file, int in_fd,
                      char *out_file, int out_fd)
 {
@@ -472,9 +439,10 @@ static int out_to_stdout(z_stream *strm, char *in_file, int in_fd)
 }
 
 static int out_to_filename(z_stream *strm, char *in_file, int in_fd,
-                           char *filename, time_t time)
+                           char *filename)
 {
 	int out_fd, ret;
+	gz_header header = {0};
 
 	out_fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC
 	                      | (opt_force ? 0 : O_EXCL), 0666);
@@ -483,14 +451,18 @@ static int out_to_filename(z_stream *strm, char *in_file, int in_fd,
 		return 1;
 	}
 
+	if(!opt_compress && opt_restore_name) {
+		inflateGetHeader(strm, &header);
+	}
+
 	ret = out_to_fd(strm, in_file, in_fd, filename, out_fd);	
 	if(ret)
 		goto cleanup;
 
-	if(time != 0 && !opt_compress && opt_restore_name) {
+	if(header.time) {
 		struct timespec timespecs[2] = {
 			{.tv_nsec = UTIME_OMIT},
-			{.tv_sec = time}
+			{.tv_sec = header.time}
 		};
 		if(futimens(out_fd, timespecs)) {
 			report_error(errno, "%s", filename);
@@ -533,17 +505,6 @@ static int handle_stdin()
 		goto cleanup;
 	}
 
-	if(opt_restore_name && !opt_compress && !opt_stdout) {
-		ret = read_header(&strm, &header, "stdin", 0);
-		if(ret != 0) {
-			goto cleanup;
-		}
-		if(header.name) {
-			ret = out_to_filename(&strm, "stdin", 0, header.name, header.time);
-			free(header.name);
-			goto cleanup;
-		}
-	}
 	ret = out_to_stdout(&strm, "stdin", 0);
 cleanup:
 	close_stream(&strm);
@@ -605,14 +566,6 @@ static int handle_path(char *path)
 	z_stream strm = {0};
 	char *out_path = 0;
 	int ret = 0;
-	/* This header serves two purposes: first, when compressing it is used
-	 * to set up what the output header will be. Second, when decompressing
-	 * it serves as the storage for the input header.
-	 */
-	gz_header header = {
-		.text = opt_ascii_text ? 0 : 1,
-		.os = 3, /* Unix */
-	};
 
 	/* Use O_NOFOLLOW to implement the behavior that gzip doesn't
 	 * compress symlinks
@@ -678,14 +631,6 @@ static int handle_path(char *path)
 	}
 
 	if(!opt_compress) {
-		if(opt_restore_name) {
-			int res = read_header(&strm, &header, path, in_fd);
-			if(res != 0) {
-				ret = res;
-				goto cleanup_strm;
-			}
-			header.name = 0;
-		}
 		out_path = input_to_output_path(path);
 		if(!out_path) {
 			report_error(errno, 0);
@@ -694,6 +639,10 @@ static int handle_path(char *path)
 		}
 	} else {
 		int len;
+		gz_header header = {
+			.text = opt_ascii_text ? 0 : 1,
+			.os = 3 /* Unix */
+		};
 
 		if(opt_store_name) {
 			header.time = stat_buf.st_mtime;
@@ -709,7 +658,7 @@ static int handle_path(char *path)
 		}
 	}
 
-	ret = out_to_filename(&strm, path, in_fd, out_path, header.time);
+	ret = out_to_filename(&strm, path, in_fd, out_path);
 
 	if(ret == 0 && !opt_keep) {
 		if(remove(path)) {
@@ -719,7 +668,6 @@ static int handle_path(char *path)
 	}
 
 cleanup_paths:
-	free(header.name);
 	free(out_path);
 cleanup_strm:
 	close_stream(&strm);
