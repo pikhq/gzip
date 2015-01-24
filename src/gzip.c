@@ -1,6 +1,6 @@
 #include <unistd.h>
 #ifndef _POSIX_VERSION
-#warning "Your system does not even claim to support POSIX. Expect failure."
+#error "Your system does not even claim to support POSIX."
 #endif
 
 #include <dirent.h>
