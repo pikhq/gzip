@@ -1,6 +1,10 @@
+#include <unistd.h>
+#ifndef _POSIX_VERSION
+#warning "Your system does not even claim to support POSIX. Though it might work, the build is likely to fail in interesting ways."
+#endif
+
 #include <time.h>
 #include <dirent.h>
-#include <unistd.h>
 #include <libgen.h>
 #include <stdbool.h>
 #include <stddef.h>
