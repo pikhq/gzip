@@ -1,33 +1,30 @@
 #include <unistd.h>
 #ifndef _POSIX_VERSION
-#warning "Your system does not even claim to support POSIX. Though it might work, the build is likely to fail in interesting ways."
+#warning "Your system does not even claim to support POSIX. Expect failure."
 #endif
 
-#include <time.h>
 #include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <inttypes.h>
 #include <libgen.h>
+#include <limits.h>
+#include <locale.h>
+#include <stdarg.h>
 #include <stdbool.h>
-#include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <errno.h>
-#include <sys/types.h>
 #include <sys/stat.h>
-#include <fcntl.h>
-#include <limits.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <stdint.h>
-#include <inttypes.h>
-#include <locale.h>
-
+#include <sys/types.h>
+#include <time.h>
+#include <unistd.h>
 #include <zlib.h>
-
-#include "util.h"
 
 #include "asprintf.h"
 #include "getopt_long.h"
+#include "util.h"
 
 static char *program_name;
 
