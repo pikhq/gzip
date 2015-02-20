@@ -57,8 +57,6 @@ static bool  opt_compress	= true;
 static bool  opt_force		= false;
 static bool  opt_keep		= false;
 static bool  opt_list		= false;
-static bool  opt_store_name	= true;
-static bool  opt_restore_name	= false;
 static int   opt_verbosity	= 1;
 static bool  opt_recursive	= false;
 static char *opt_suffix		= ".gz";
@@ -96,11 +94,6 @@ static void write_help()
 			"compress links\n"
 		"  -h, --help           output this message\n"
 		"  -l, --list           list compressed file contents\n"
-		"  -n, --no-name        do not save or restore the original "
-			"file time stamp\n"
-		"  -N, --name           save or restore the original file "
-			"time stamp (does not\n"
-		"                       save or restore the name)\n"
 		"                       (default when compressing)\n"
 		"  -q, --quiet          suppress all warnings\n"
 		"  -r, --recursive      operate recursively on directories\n"
@@ -452,25 +445,9 @@ static int out_to_filename(z_stream *strm, char *in_file, int in_fd,
 		return 1;
 	}
 
-	if(!opt_compress && opt_restore_name) {
-		inflateGetHeader(strm, &header);
-	}
-
 	ret = out_to_fd(strm, in_file, in_fd, filename, out_fd);	
 	if(ret)
 		goto cleanup;
-
-	if(header.time) {
-		struct timespec timespecs[2] = {
-			{.tv_nsec = UTIME_OMIT},
-			{.tv_sec = header.time}
-		};
-		if(futimens(out_fd, timespecs)) {
-			report_error(errno, "%s", filename);
-			ret = 1;
-			goto cleanup;
-		}
-	}
 
 cleanup:
 	if(ret)
@@ -648,10 +625,6 @@ static int handle_path(char *path)
 			.os = 3 /* Unix */
 		};
 
-		if(opt_store_name) {
-			header.time = stat_buf.st_mtime;
-		}
-
 		deflateSetHeader(&strm, &header);
 
 		if(asprintf(&out_path, "%s%s", path, opt_suffix) < 0) {
@@ -715,11 +688,8 @@ int main(int argc, char **argv)
 			opt_list = true;
 			opt_compress = false;
 			break;
-		case 'n':
-			opt_restore_name = opt_store_name = false;
-			break;
-		case 'N':
-			opt_restore_name = opt_store_name = true;
+		case 'n': case 'N':
+			// These features are fragile and bogus. Ignore them.
 			break;
 		case 'q':
 			opt_verbosity = 0;
