@@ -643,7 +643,6 @@ static int handle_path(char *path)
 			goto cleanup_strm;
 		}
 	} else {
-		int len;
 		gz_header header = {
 			.text = opt_ascii_text ? 0 : 1,
 			.os = 3 /* Unix */
@@ -655,8 +654,7 @@ static int handle_path(char *path)
 
 		deflateSetHeader(&strm, &header);
 
-		len = asprintf(&out_path, "%s%s", path, opt_suffix);
-		if(len < 0) {
+		if(asprintf(&out_path, "%s%s", path, opt_suffix) < 0) {
 			report_error(errno, 0);
 			ret = 2;
 			goto cleanup_strm;
