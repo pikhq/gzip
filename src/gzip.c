@@ -108,7 +108,7 @@ static void write_help()
 		"With no FILE, or when FILE is -, operates on standard "
 			"input.\n"
 		"\n"
-		"Report bugs to <josiahw@gmail.com>\n";
+		"Report bugs to <oss@ada.pikhq.com>\n";
 	printf("%s", help_msg);
 		
 }
@@ -117,7 +117,7 @@ static void write_version()
 {
 	static const char version_msg[] =
 		"gzip 0.0\n"
-		"Copyright (c) 2014, Josiah Worcester.\n";
+		"Copyright (c) 2014, Ada Worcester.\n";
 	printf("%s", version_msg);
 }
 
